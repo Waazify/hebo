@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="hero min-h-screen bg-base-100">
+    <div class="hero-content flex-col lg:flex-row-reverse">
+        <div class="text-center lg:text-left">
+            <h1 class="text-5xl font-bold">Hebo AI</h1>
+            <p class="py-6">Thank you for using our service.</p>
+        </div>
+        <div class="card flex-shrink-0 w-full max-w-sm shadow-2xl bg-base-100">
+            <div class="card-body">
+                <h2 class="card-title">Sign Out</h2>
+                <p class="text-sm text-gray-600">
+                    Are you sure you want to sign out?
+                </p>
+
+                <form method="post" action="{% url 'account_logout' %}">
+                    {% csrf_token %}
+                    {% if redirect_field_value %}
+                    <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}"/>
+                    {% endif %}
+                    
+                    <div class="mt-6 space-y-4">
+                        <button type="submit" class="btn btn-primary w-full">
+                            Sign Out
+                        </button>
+                        <a href="{% url 'home' %}" class="btn btn-outline w-full">
+                            Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

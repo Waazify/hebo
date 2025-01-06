@@ -1,0 +1,36 @@
+{
+  "name": "hebo-backend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run watch:css\" \"npm run watch:js\"",
+    "build": "npm run build:css && npm run build:js && npm run build:editor",
+    "watch:css": "tailwindcss -i ./static/src/css/input.css -o ./static/dist/css/styles.css --watch",
+    "build:css": "tailwindcss -i ./static/src/css/input.css -o ./static/dist/css/styles.css --minify",
+    "watch:js": "esbuild ./static/src/js/app.js --bundle --outfile=./static/dist/js/app.js --watch",
+    "build:js": "esbuild ./static/src/js/app.js --bundle --minify --outfile=./static/dist/js/app.js",
+    "build:editor": "webpack --config webpack.config.js"
+  },
+  "dependencies": {
+    "@tiptap/core": "^2.11.0",
+    "@tiptap/extension-placeholder": "^2.11.0",
+    "@tiptap/pm": "^2.11.0",
+    "@tiptap/starter-kit": "^2.11.0",
+    "alpinejs": "^3.13.3",
+    "htmx.org": "^1.9.10",
+    "webpack": "^5.97.1",
+    "webpack-cli": "^6.0.1",
+    "@tailwindcss/forms": "^0.5.7",
+    "autoprefixer": "^10.4.16",
+    "concurrently": "^8.2.2",
+    "daisyui": "^4.4.19",
+    "esbuild": "^0.19.9",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@babel/preset-env": "^7.26.0",
+    "babel-loader": "^9.2.1"
+  }
+}

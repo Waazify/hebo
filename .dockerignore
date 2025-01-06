@@ -1,0 +1,61 @@
+# Version Control
+.git
+.gitignore
+.gitattributes
+
+# Environment
+.env
+**/.env
+.env.*
+!.env.example
+**/.env.example
+
+# Python
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/*.py[cod]
+**/*$py.class
+
+# Virtual Environments
+.venv
+**/.venv
+venv/
+ENV/
+
+# Testing
+.coverage
+.pytest_cache
+htmlcov/
+
+# IDE
+.idea
+.vscode
+**/*.swp
+**/*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.docker
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Dependencies
+**/node_modules
+
+# Build
+**/dist
+**/build
+
+# Project Structure
+project-structure.txt

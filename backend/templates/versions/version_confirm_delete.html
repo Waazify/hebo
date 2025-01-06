@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex flex-col min-h-screen">
+    <main class="flex-1 p-6">
+        <div class="max-w-2xl mx-auto">
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title text-error">Delete Version</h2>
+                    
+                    <div class="alert alert-error mt-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                        </svg>
+                        <div>
+                            <h3 class="font-bold">Warning!</h3>
+                            <div class="text-sm">Are you sure you want to delete version "{{ version.name }}" of agent "{{ version.agent.name }}"? This action cannot be undone.</div>
+                        </div>
+                    </div>
+
+                    <form method="post" class="mt-6">
+                        {% csrf_token %}
+                        <div class="flex justify-end gap-2">
+                            <a href="{% url 'agent_list' organization_pk=organization.pk %}" class="btn btn-outline">
+                                Cancel
+                            </a>
+                            <button type="submit" class="btn btn-error">
+                                Delete
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %} 

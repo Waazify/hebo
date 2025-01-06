@@ -1,0 +1,159 @@
+### Python ###
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.env
+**/.env
+!.env.example
+!**/.env.example
+.venv/
+**/.venv/
+venv/
+ENV/
+env/
+pythonenv*
+
+# uv
+.uv/
+**/.uv/
+uv.lock
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+.ruff_cache/
+
+### Django ###
+*.log
+*.pot
+*.pyc
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+static/collected/
+
+### FastAPI ###
+logs/
+
+### Docker ###
+.docker/
+docker-compose.override.yml
+
+### IDE/Editor ###
+# VSCode
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+.idea_modules/
+
+# Sublime Text
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+*.sublime-workspace
+*.sublime-project
+
+### System Files ###
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+
+### Logs and databases ###
+*.log
+*.sql
+*.sqlite
+*.sqlite3
+
+### Node (for frontend) ###
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.npm
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+### Project specific ###
+# Temporary files
+tmp/
+temp/
+.temp/
+*.tmp
+*.bak
+*.swp
+*~
+
+# Local development settings
+local.py
+development.py
+
+# Secrets
+*.pem
+*.key
+*.cert
+secrets/
+
+# Build output
+build/
+dist/
+out/
+
+# Cache
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# Documentation
+/site
+/docs/_build/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Environment directories
+.python-version
+.ruby-version
+.node-version
+.nvmrc

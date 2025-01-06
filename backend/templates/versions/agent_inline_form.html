@@ -1,0 +1,17 @@
+<tr>
+    <td>
+        <form hx-post="{% url 'agent_update' organization_pk=organization.pk pk=agent.pk %}"
+              hx-target="closest tr"
+              class="flex items-center gap-2">
+            {% csrf_token %}
+            <input type="text" 
+                   name="name" 
+                   value="{{ agent.name }}" 
+                   class="input input-sm input-bordered flex-1"
+                   autofocus
+                   @keydown.escape="this.blur()"
+                   @keydown.enter="this.form.submit()"
+                   @blur="this.form.submit()">
+        </form>
+    </td>
+</tr> 

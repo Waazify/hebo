@@ -1,0 +1,161 @@
+You are an expert in Python, Django, FastAPI, Alpine.js, Tailwind CSS, DaisyUI, and HTMX, with extensive experience in building scalable, secure, and maintainable web applications.
+
+## General Principles
+
+- Maintain modularity and separation of concerns across the backend, messaging service, and frontend.
+- Follow best practices for security, scalability, and performance optimization.
+- Prioritize readability, maintainability, and adherence to conventions specific to each framework and tool.
+- Use clear, descriptive names for variables, functions, components, and files.
+- Follow PEP 8 standards for Python components, ensuring consistent and clean code formatting.
+- Adhere to SOLID principles to create scalable and maintainable object-oriented designs.
+
+---
+
+## Backend (Django + ORM)
+
+### Key Principles
+
+- Use Django’s built-in features for user management, templates, and ORM to minimize boilerplate.
+- Follow Django’s MVT (Model-View-Template) architecture strictly.
+- Keep business logic in models and forms; ensure views remain lightweight.
+- Use class-based views (CBVs) for complex logic and function-based views (FBVs) for simplicity.
+- Adhere to PEP 8 standards for all Python code.
+
+### Implementation Guidelines
+
+1. **User Management**:
+
+   - Use Django’s built-in `AbstractUser` model for user authentication and extend it as needed.
+   - Leverage Django’s `auth` framework for login/logout, permissions, and password management.
+
+2. **Knowledge Base Management**:
+
+   - Create a modular app to manage articles, categories, and tags using Django’s ORM.
+   - Use `prefetch_related` and `select_related` to optimize database queries.
+   - Validate data using Django’s model and form validation.
+
+3. **Evaluation Orchestration**:
+
+   - Use Django’s signals to handle asynchronous events.
+   - Integrate Celery with Redis for background tasks like data processing or evaluation scheduling.
+   - Use Django’s `test` framework and `pytest-django` for unit testing and integration testing.
+
+4. **Error Handling and Validation**:
+
+   - Customize error pages (e.g., 404, 500) to align with the project’s UI.
+   - Handle view-level exceptions with `try-except` blocks and Django’s error handlers.
+
+5. **Performance Optimization**:
+
+   - Use `django-debug-toolbar` during development for performance insights.
+   - Cache frequently accessed data using Django’s caching framework with Redis.
+   - Optimize database queries by indexing and avoiding N+1 query problems.
+
+---
+
+## Messaging Service (FastAPI + Async Operations)
+
+### Key Principles
+
+- Design lightweight and performant APIs using FastAPI’s async capabilities.
+- Use Pydantic models for request validation and response schemas.
+- Structure the service for scalability and maintainability.
+- Adhere to PEP 8 standards for all Python code.
+
+### Implementation Guidelines
+
+1. **Messaging Exchange**:
+
+   - Use `async def` for I/O-bound tasks like database interactions and API calls.
+   - Leverage FastAPI’s dependency injection for shared state management.
+   - Define clear and RESTful route patterns for messaging APIs.
+
+2. **Streaming**:
+
+   - Use FastAPI’s `StreamingResponse` for real-time data streaming.
+   - Optimize performance with asynchronous libraries like `asyncpg` or `aiomysql` for database interactions.
+   - Implement WebSocket endpoints for real-time messaging.
+
+3. **Error Handling**:
+
+   - Use `HTTPException` for predictable errors and a global error handler for unexpected ones.
+   - Return user-friendly error messages and appropriate HTTP status codes.
+
+4. **Performance Optimization**:
+
+   - Minimize blocking operations in routes; prioritize async flows.
+   - Implement caching for frequently accessed data using Redis.
+   - Use lazy loading and batch processing for handling large datasets.
+
+### Project Structure
+
+- **FastAPI Messaging Service**:
+  - `proxy/`: Root folder for the FastAPI project.
+    - `routers/`: FastAPI routes.
+    - `schemas/`: Pydantic models for request/response validation.
+    - `services/`: Messaging and streaming logic.
+
+---
+
+## Frontend (Alpine.js, Tailwind CSS, DaisyUI, and HTMX)
+
+### Key Principles
+
+- Combine HTMX with Django templates for a flexible and interactive server-side rendering approach.
+- Use Alpine.js for lightweight and declarative JavaScript interactions.
+- Leverage Tailwind CSS and DaisyUI for utility-first styling and pre-built components.
+
+### Implementation Guidelines
+
+1. **HTMX for Server-Side Rendering**:
+
+   - Use `hx-get` and `hx-post` for server interactions, returning only necessary HTML snippets.
+   - Leverage `hx-target` to inject server responses dynamically into the DOM.
+   - Implement `hx-trigger` for custom event handling and `hx-push-url` for updating browser history.
+   - Use Django templates to serve reusable HTMX fragments.
+
+2. **Dynamic Interactions with Alpine.js**:
+
+   - Use Alpine.js for lightweight state management and UI interactions.
+   - Avoid overloading HTMX with JavaScript logic; delegate such tasks to Alpine.js.
+   - Combine `x-data` and `x-bind` for reactive data-binding in components.
+
+3. **Styling with Tailwind CSS and DaisyUI**:
+
+   - Use Tailwind CSS’s utility classes for custom designs and DaisyUI’s pre-built components for rapid prototyping.
+   - Ensure accessibility with proper `aria-attributes` and responsive design principles.
+   - Implement dark mode and theming options using Tailwind’s configuration.
+
+4. **Error Handling and Validation**:
+
+   - Use `hx-swap` to display validation errors dynamically within the DOM.
+   - Validate forms server-side using Django’s validation and provide real-time feedback with HTMX.
+
+5. **Performance Optimization**:
+
+   - Serve optimized static assets using Django’s static file management system and integrate with a CDN.
+   - Minimize JavaScript payloads and leverage Alpine.js for minimal interactivity needs.
+   - Use caching for HTMX endpoints to improve load times.
+
+### Project Structure
+
+- **Frontend**:
+  - `frontend/`: Root folder for the frontend.
+    - `components/`: Reusable HTMX and Alpine.js components.
+    - `assets/`: Tailwind CSS and DaisyUI styles.
+
+---
+
+## Security and Testing
+
+1. **Security**:
+
+   - Enable Django’s CSRF protection and FastAPI’s CORS middleware.
+   - Use HTTPS and secure cookies for all environments.
+   - Sanitize all inputs to prevent XSS and SQL injection.
+
+2. **Testing**:
+
+   - Use Django’s and FastAPI’s built-in testing tools for unit, integration, and end-to-end tests.
+   - Write tests for both synchronous and asynchronous operations.
+   - Use coverage tools to ensure high code quality and reliability.

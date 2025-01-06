@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex flex-col min-h-screen">
+    <div class="max-w-3xl mx-auto w-full p-6">
+        {% if organization %}
+            <!-- Settings Tabs -->
+            <div class="tabs tabs-boxed mb-6" x-data="{ activeTab: 'general' }">
+                <a class="tab h-8 min-h-[2rem]" 
+                   :class="{ 'tab-active': activeTab === 'general' }" 
+                   @click="activeTab = 'general'">General</a>
+                <a class="tab h-8 min-h-[2rem]" 
+                   :class="{ 'tab-active': activeTab === 'team' }" 
+                   @click="activeTab = 'team'">Team</a>
+            </div>
+
+            <!-- General Settings -->
+            <div x-show="activeTab === 'general'" class="space-y-6">
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <h3 class="card-title">Organization Settings</h3>
+                        <form method="post" action="{% url 'organization_settings' organization_pk=organization.pk %}" class="mt-4">
+                            {% csrf_token %}
+                            <div class="form-control">
+                                <label class="label">
+                                    <span class="label-text">Organization Name</span>
+                                </label>
+                                <input type="text" 
+                                       name="name"
+                                       class="input input-bordered" 
+                                       value="{{ organization.name }}" 
+                                       {% if not is_owner %}disabled{% endif %}
+                                       required />
+                            </div>
+                            <div class="form-control mt-4">
+                                <label class="label">
+                                    <span class="label-text">Organization ID</span>
+                                </label>
+                                <div class="join w-full">
+                                    <input type="text" 
+                                           class="input input-bordered join-item flex-1 bg-base-200 font-mono" 
+                                           value="{{ organization.pk }}" 
+                                           readonly />
+                                    <button type="button"
+                                            class="btn join-item" 
+                                            @click="navigator.clipboard.writeText('{{ organization.pk }}')">
+                                        <svg xmlns="http://www.w3.org/2000/svg" 
+                                             class="h-4 w-4" 
+                                             viewBox="0 0 24 24" 
+                                             fill="none" 
+                                             stroke="currentColor" 
+                                             stroke-width="2">
+                                            <path stroke-linecap="round" 
+                                                  stroke-linejoin="round" 
+                                                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            {% if is_owner %}
+                            <div class="card-actions justify-end mt-6">
+                                <button type="submit" class="btn btn-primary">Save Changes</button>
+                            </div>
+                            {% endif %}
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Danger Zone Card - Only show to owners -->
+                {% if is_owner %}
+                <div class="card bg-base-100 shadow-xl">
+                    <div class="card-body">
+                        <h3 class="card-title text-error">Danger Zone</h3>
+                        <div class="flex items-start gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" 
+                                 class="h-5 w-5 text-error flex-shrink-0 mt-0.5" 
+                                 viewBox="0 0 24 24" 
+                                 fill="none" 
+                                 stroke="currentColor" 
+                                 stroke-width="2">
+                                <path stroke-linecap="round" 
+                                      stroke-linejoin="round" 
+                                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <p class="text-sm">Once you delete an organization, there is no going back. Please be certain.</p>
+                        </div>
+                        <div class="card-actions justify-end mt-4">
+                            <a href="{% url 'organization_delete' organization_pk=organization.pk %}" class="btn btn-error btn-sm">
+                                Delete Organization
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Team Settings -->
+            <div x-show="activeTab === 'team'" class="space-y-6">
+                <!-- Team management UI here -->
+            </div>
+        {% else %}
+            <!-- Create Organization Form -->
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h3 class="card-title">Create Organization</h3>
+                    <p class="text-sm text-base-content/70 mt-2">
+                        Create a new organization to get started.
+                    </p>
+                    <form method="post" action="{% url 'organization_create' %}" class="mt-4">
+                        {% csrf_token %}
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text">Organization Name</span>
+                            </label>
+                            <input type="text" 
+                                   name="name"
+                                   class="input input-bordered" 
+                                   placeholder="Enter organization name"
+                                   required />
+                        </div>
+                        <div class="card-actions justify-end mt-6">
+                            <button type="submit" class="btn btn-primary">Create Organization</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %} 

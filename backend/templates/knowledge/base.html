@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex flex-col min-h-screen" x-data="{ showSearchModal: false }">
+  <!-- Main content area -->
+  <div class="flex-1 flex">
+    <!-- Workspace sidebar -->
+    <aside class="w-64 bg-base-200 border-r flex flex-col">
+      <!-- Navigation takes remaining space -->
+      <nav class="flex-1 p-2">
+        <!-- Search button -->
+        <div class="px-2 mb-2">
+          <button 
+            class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-base-content/50 uppercase tracking-wider hover:bg-base-300 rounded-lg"
+            @click="showSearchModal = true"
+          >
+            <span>Search</span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Border separator -->
+        <div class="px-4 border-b border-base-300"></div>
+
+        <!-- Knowledge Base Items -->
+        <div class="mb-6">
+          <div class="px-2 mt-2">
+            <a href="{% url 'page_create' organization_pk=organization.pk %}" 
+               class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-base-content/50 uppercase tracking-wider hover:bg-base-300 rounded-lg">
+              <span>Knowledge Base</span>
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </a>
+          </div>
+          <ul class="space-y-0.5 knowledge-base-items pl-2">
+            {% for page in pages %}
+              <li class="group relative" x-data="{ showMenu: false }">
+                <div class="flex items-center rounded-lg transition-colors hover:bg-base-300 {% if page.pk == current_page.pk %}bg-base-300{% endif %}">
+                  <a href="{% url 'page_detail' organization_pk=organization.pk pk=page.pk %}" 
+                     class="flex-grow block px-3 py-1.5 text-sm">
+                    <span>{{ page.title }}</span>
+                  </a>
+                  <div class="hidden group-hover:flex items-center pr-2">
+                    <!-- Add button -->
+                    <button class="p-1 hover:bg-base-content/10 rounded-lg">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                      </svg>
+                    </button>
+                    <!-- Menu button -->
+                    <div class="relative">
+                      <button @click="showMenu = !showMenu" class="p-1 hover:bg-base-content/10 rounded-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
+                        </svg>
+                      </button>
+                      <!-- Dropdown menu -->
+                      <div x-show="showMenu" 
+                           @click.away="showMenu = false"
+                           x-transition:enter="transition ease-out duration-100"
+                           x-transition:enter-start="transform opacity-0 scale-95"
+                           x-transition:enter-end="transform opacity-100 scale-100"
+                           x-transition:leave="transition ease-in duration-75"
+                           x-transition:leave-start="transform opacity-100 scale-100"
+                           x-transition:leave-end="transform opacity-0 scale-95"
+                           class="absolute right-0 mt-2 w-48 rounded-lg shadow-lg bg-base-100 ring-1 ring-black ring-opacity-5 z-50">
+                        <div class="py-1">
+                          <a href="{% url 'page_update' organization_pk=organization.pk pk=page.pk %}" 
+                             class="block px-4 py-2 text-sm hover:bg-base-200">
+                            Edit page
+                          </a>
+                          <a href="{% url 'page_delete' organization_pk=organization.pk pk=page.pk %}" 
+                             class="block px-4 py-2 text-sm text-error hover:bg-base-200">
+                            Delete page
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- Content area -->
+    <div class="flex-1 bg-white overflow-y-auto">
+      {% block knowledge_content %}{% endblock %}
+    </div>
+  </div>
+
+  <!-- Search Modal -->
+  <div x-cloak 
+       x-show="showSearchModal" 
+       class="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-[20vh]"
+       @click="showSearchModal = false"
+       @keydown.escape.window="showSearchModal = false"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0">
+    <div class="w-[640px] bg-base-100 rounded-xl shadow-2xl"
+         @click.stop>
+      <div class="p-4">
+        <form method="GET" action="{% url 'knowledge_list' organization_pk=organization.pk %}">
+          <div class="relative">
+            <input type="text" 
+                   name="q"
+                   class="input input-lg w-full pl-12 bg-base-200 border-none"
+                   placeholder="Search knowledge..."
+                   @keydown.escape.stop="showSearchModal = false"
+                   x-ref="searchInput"
+                   x-init="$nextTick(() => { if(showSearchModal) $refs.searchInput.focus() })"
+            />
+            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-base-content/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} 

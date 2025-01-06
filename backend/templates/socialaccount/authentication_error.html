@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="hero min-h-screen bg-base-100">
+    <div class="hero-content text-center">
+        <div class="card max-w-md shadow-2xl bg-base-100">
+            <div class="card-body">
+                <h2 class="card-title text-error justify-center">Authentication Error</h2>
+                <p class="text-gray-600">
+                    An error occurred while attempting to login with your social account. 
+                    Please try again or use a different login method.
+                </p>
+                <div class="mt-6">
+                    <a href="{% url 'account_login' %}" class="btn btn-primary">
+                        Back to Login
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

@@ -1,0 +1,42 @@
+{% extends "knowledge/base.html" %}
+
+{% block knowledge_content %}
+<div class="max-w-3xl mx-auto py-20 px-12">
+  <div class="prose max-w-none">
+    <h1 class="text-4xl font-bold mb-8">{% if form.instance.pk %}Edit{% else %}New{% endif %} Page</h1>
+    
+    <form method="post" class="space-y-6">
+      {% csrf_token %}
+      
+      <div class="form-control">
+        <label class="label">
+          <span class="label-text font-bold">Title</span>
+        </label>
+        {{ form.title }}
+        {% if form.title.errors %}
+          <label class="label">
+            <span class="label-text-alt text-error">{{ form.title.errors|join:", " }}</span>
+          </label>
+        {% endif %}
+      </div>
+
+      <div class="form-control">
+        <label class="label">
+          <span class="label-text font-bold">Content</span>
+        </label>
+        {{ form.content }}
+        {% if form.content.errors %}
+          <label class="label">
+            <span class="label-text-alt text-error">{{ form.content.errors|join:", " }}</span>
+          </label>
+        {% endif %}
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <a href="{% url 'knowledge_list' organization_pk=organization.pk %}" class="btn btn-outline">Cancel</a>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %} 
