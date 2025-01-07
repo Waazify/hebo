@@ -9,15 +9,37 @@ from django.views.generic import (
     DeleteView,
 )
 from django.http import JsonResponse
-from django.views.decorators.http import require_http_methods
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
+from django.utils.safestring import mark_safe
 import json
+import markdown
 
 from core.mixins import OrganizationPermissionMixin
 from versions.models import Version
 from .models import Page
 from .forms import PageForm
+
+
+def extract_title_and_content(content: str) -> tuple[str, str]:
+    """Extract title from first line and format content."""
+    lines = content.strip().split('\n', 1)
+    
+    if not lines:
+        return "New Page", ""
+        
+    first_line = lines[0].strip()
+    remaining_content = lines[1].strip() if len(lines) > 1 else ""
+    
+    # If first line isn't a header, make it one
+    if not first_line.startswith('# '):
+        title = first_line
+        formatted_content = f"# {first_line}\n\n{remaining_content}"
+    else:
+        title = first_line[2:].strip()  # Remove '# ' prefix
+        formatted_content = content
+        
+    return title, formatted_content
 
 
 class KnowledgeBaseView(LoginRequiredMixin, OrganizationPermissionMixin, ListView):
@@ -41,10 +63,30 @@ class KnowledgeBaseView(LoginRequiredMixin, OrganizationPermissionMixin, ListVie
         # Get the queryset first
         queryset = self.get_queryset()
         
-        # If there are no pages, redirect to page creation
+        # If there are no pages, create one and redirect to it
         if not queryset.exists():
-            return redirect(reverse('page_create', kwargs={'organization_pk': self.organization.pk}))
+            # Get the selected version
+            version_id = request.session.get("selected_version_id")
+            version = None
+            if version_id:
+                try:
+                    version = Version.objects.get(id=version_id)
+                except Version.DoesNotExist:
+                    raise ValueError("Version not found")
+
+            # Create the first page
+            page = Page.objects.create(
+                title="New Page",
+                content="# New Page\n\nStart writing here...",
+                organization=self.organization,
+                version=version
+            )
             
+            return redirect(reverse('page_detail', kwargs={
+                'organization_pk': self.organization.pk,
+                'pk': page.pk
+            }))
+        
         # If we're on the base knowledge URL and there are pages, redirect to the first page
         if self.request.path == reverse('knowledge_list', kwargs={'organization_pk': self.organization.pk}):
             first_page = queryset.first()
@@ -56,7 +98,57 @@ class KnowledgeBaseView(LoginRequiredMixin, OrganizationPermissionMixin, ListVie
         
         return super().get(request, *args, **kwargs)
 
+    def post(self, request, *args, **kwargs):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            try:
+                data = json.loads(request.body)
+                content = data.get('content', '').strip()
+                title, formatted_content = extract_title_and_content(content)
+                
+                # Get version - either from request or session
+                version_id = data.get('version') or request.session.get('selected_version_id')
+                
+                if not version_id:
+                    raise ValueError("A version must be selected to create a page")
+                
+                try:
+                    version = Version.objects.get(id=version_id)
+                except Version.DoesNotExist:
+                    error_msg = f"Version not found: {version_id}"
+                    raise ValueError(error_msg)
+                
+                # Create new page
+                page = Page.objects.create(
+                    title=title,
+                    content=formatted_content,
+                    organization=self.organization,
+                    version=version
+                )
+                
+                response_data = {
+                    'status': 'success',
+                    'redirect_url': reverse('page_detail', kwargs={
+                        'organization_pk': self.organization.pk,
+                        'pk': page.pk
+                    })
+                }
+                return JsonResponse(response_data)
+            except Exception as e:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': str(e),
+                }, status=500)
+                
+        return super().post(request, *args, **kwargs)  # type: ignore
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Add the selected version ID to the context
+        context['selected_version_id'] = self.request.session.get('selected_version_id')
+        return context
+
+
+@method_decorator(csrf_protect, name='dispatch')
 class PageDetailView(LoginRequiredMixin, OrganizationPermissionMixin, DetailView):
     model = Page
     template_name = "knowledge/page_detail.html"
@@ -64,39 +156,17 @@ class PageDetailView(LoginRequiredMixin, OrganizationPermissionMixin, DetailView
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        md = markdown.Markdown(extensions=[
+            'extra',
+            'codehilite',
+            'fenced_code',
+            'tables',
+            'toc',
+        ])
+        context["page_content"] = md.convert(self.object.content)  # type: ignore
+        context["raw_content"] = self.object.content  # type: ignore
         context["current_page"] = self.object  # type: ignore
         return context
-
-
-class PageCreateView(LoginRequiredMixin, OrganizationPermissionMixin, CreateView):
-    model = Page
-    form_class = PageForm
-    template_name = "knowledge/page_form.html"
-
-    def get_success_url(self):
-        return reverse(
-            "page_detail",
-            kwargs={
-                "organization_pk": self.organization.pk,
-                "pk": self.object.pk,  # type: ignore
-            },
-        )
-
-    def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
-        kwargs.update({"organization": self.organization, "user": self.request.user})
-        return kwargs
-
-    def form_valid(self, form):
-        form.instance.organization = self.organization
-        form.instance.created_by = self.request.user
-
-        # Access the selected version from the session
-        selected_version_id = self.request.session.get("selected_version_id")
-        if selected_version_id:
-            form.instance.version = Version.objects.get(id=selected_version_id)
-
-        return super().form_valid(form)
 
 
 @method_decorator(csrf_protect, name='dispatch')
@@ -111,12 +181,32 @@ class PageUpdateView(LoginRequiredMixin, OrganizationPermissionMixin, UpdateView
         try:
             data = json.loads(request.body)
             page: Page = self.get_object()  # type: ignore
-            page.title = data.get('title', '').strip()
-            page.content = data.get('content', '').strip()  
+            
+            # Get the raw markdown content and extract title
+            content = data.get('content', '').strip()
+            title, formatted_content = extract_title_and_content(content)
+            
+            # Convert to HTML for the response
+            md = markdown.Markdown(extensions=[
+                'extra',
+                'codehilite',
+                'fenced_code',
+                'tables',
+                'toc',
+            ])
+            html_content = md.convert(formatted_content)
+            
+            # Save both title and content
+            page.title = title
+            page.content = formatted_content
             page.save()
-            return JsonResponse({'status': 'success'})
-        except json.JSONDecodeError:
-            return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+            
+            return JsonResponse({
+                'status': 'success',
+                'html_content': mark_safe(html_content),
+                'title': title,
+                'page_id': str(page.pk)
+            })
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 

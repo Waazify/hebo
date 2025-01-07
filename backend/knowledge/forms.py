@@ -5,7 +5,7 @@ from .models import Page
 class PageForm(forms.ModelForm):
     class Meta:
         model = Page
-        fields = ["title", "content"]
+        fields = ["content"]
 
     def __init__(self, *args, **kwargs):
         self.organization = kwargs.pop("organization", None)

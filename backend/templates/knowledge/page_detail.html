@@ -1,127 +1,61 @@
-{% extends "knowledge/base.html" %}
-
-{% load static %}
-
-{% block extra_head %}
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script>
-  marked.use({
-    breaks: true,
-    gfm: true,
-  });
-</script>
-<script src="{% static 'js/editor.bundle.js' %}"></script>
-{% endblock %}
-
-{% block knowledge_content %}
-<div class="max-w-3xl mx-auto py-20 px-12" 
-     x-data="{ 
-       isEditing: false,
-       content: `{{ page.content|escapejs }}`,
-       title: `{{ page.title|escapejs }}`,
-       editor: null,
-       renderedContent() {
-         return marked.parse(this.content);
-       },
-       initEditor() {
-         console.log('Initializing editor with:', {
-           title: this.title,
-           content: this.content
-         });
-         
-         const container = document.getElementById('editor-container');
-         if (container) {
-           container.innerHTML = '';
-           this.editor = window.setupEditor(
-             container,
-             `${this.title}\n\n${this.content}`
-           );
-           
-           if (!this.editor) {
-             console.error('Failed to initialize editor');
-             this.isEditing = false;
-           }
-         } else {
-           console.error('Editor container not found');
-         }
-       },
-       cleanupEditor() {
-         if (this.editor) {
-           this.editor.destroy();
-           this.editor = null;
-         }
-       },
-       async saveChanges() {
-         if (!this.editor) {
-           console.error('No editor instance found');
-           return;
-         }
-         
-         const markdown = this.editor.getMarkdown();
-         console.log('Saving markdown:', markdown);
-         
-         const lines = markdown.split('\n');
-         const newTitle = lines[0];
-         const newContent = lines.slice(1).join('\n').trim();
-         
-         try {
-           const response = await fetch(`{% url 'page_update' organization_pk=organization.pk pk=page.pk %}`, {
-             method: 'POST',
-             headers: {
-               'Content-Type': 'application/json',
-               'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-             },
-             body: JSON.stringify({
-               title: newTitle,
-               content: newContent
-             })
-           });
-           
-           if (response.ok) {
-             this.title = newTitle;
-             this.content = newContent;
-             this.isEditing = false;
-             this.cleanupEditor();
-           } else {
-             console.error('Failed to save:', await response.text());
-           }
-         } catch (error) {
-           console.error('Error saving changes:', error);
-         }
-       }
-     }"
-     x-init="$watch('isEditing', value => {
-       if (value) {
-         initEditor();
-       } else {
-         cleanupEditor();
-       }
-     })"
-     @keydown.escape.window="if(isEditing) { isEditing = false; await saveChanges(); }">
-  {% csrf_token %}
-  
+{% extends "knowledge/base.html" %} {% block knowledge_content %}
+<div class="max-w-3xl mx-auto py-20 px-12" x-data="{ 
+  editing: false,
+  content: `{{ raw_content|escapejs }}`,
+  renderedContent: `{{ page_content|escapejs }}`,
+  async saveContent() {
+    try {
+      const response = await fetch('{% url 'page_update' organization_pk=organization.pk pk=page.pk %}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({ content: this.content })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        this.editing = false;
+        this.renderedContent = data.html_content;
+        document.title = data.title;
+        const sidebarTitle = document.querySelector(`[data-page-id='${data.page_id}']`);
+        if (sidebarTitle) {
+          sidebarTitle.textContent = data.title;
+        }
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  }
+}">
   <div class="prose max-w-none">
-    <!-- View Mode -->
-    <div x-show="!isEditing" 
-         @click="isEditing = true"
-         x-transition.opacity>
-      <div class="mb-8">
-        <h1 class="text-4xl font-bold m-0" x-text="title"></h1>
-      </div>
-      
-      <div class="text-base text-base-content/80 leading-relaxed" x-html="renderedContent()"></div>
-      
-      <div class="mt-8 text-sm text-base-content/60">
-        Last updated: {{ page.updated_at|date:"F j, Y" }}
-      </div>
+    <!-- Rendered Content View -->
+    <div
+      x-show="!editing"
+      @click="editing = true"
+      x-html="renderedContent"
+      class="prose prose-slate max-w-none"
+    ></div>
+
+    <!-- Markdown Editor -->
+    <div x-show="editing" style="display: none">
+      <textarea
+        x-model="content"
+        @keydown.escape.stop="saveContent()"
+        class="w-full min-h-screen font-mono border-none focus:ring-0 focus:outline-none resize-none"
+        placeholder="Start with a title..."
+        x-ref="editor"
+        @click.away="if(editing) { saveContent() }"
+        @keydown.escape.window="if(editing) { saveContent() }"
+      ></textarea>
     </div>
 
-    <!-- Edit Mode -->
-    <div x-show="isEditing" 
-         x-transition
-         @click.away="saveChanges()">
-      <div id="editor-container" class="min-h-[500px] border rounded-lg p-4"></div>
+    <div class="mt-8 text-sm text-base-content/60">
+      Last updated: {{ page.updated_at|date:"F j, Y" }}
     </div>
   </div>
 </div>
-{% endblock %} 
+{% endblock %}

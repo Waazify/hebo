@@ -35,7 +35,6 @@ def organization_context(request):
 
                 if agent:
                     context["selected_agent"] = agent
-                    print(f"Version ID: {version_id}")
                     # Try to get specific version from session first
                     version = None
                     if version_id:

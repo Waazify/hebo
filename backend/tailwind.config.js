@@ -25,7 +25,8 @@ module.exports = {
   },
   plugins: [
     require("@tailwindcss/forms"),
-    require("daisyui")
+    require("daisyui"),
+    require('@tailwindcss/typography'),
   ],
   daisyui: {
     themes: [
