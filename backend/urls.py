@@ -26,7 +26,8 @@ urlpatterns = [
     path("accounts/", include("allauth.urls")),
     path("schema/", Schema.as_view()),
     path("stripe/", include("djstripe.urls", namespace="djstripe")),
-    path("knowledge/", include("knowledge.urls")),
     path("organizations/", include("hebo_organizations.urls")),
+    path("organizations/<str:organization_pk>/knowledge/", include("knowledge.urls")),
     path("organizations/<str:organization_pk>/versions/", include("versions.urls")),
+    path("organizations/<str:organization_pk>/agent_settings/", include("agent_settings.urls")),
 ]

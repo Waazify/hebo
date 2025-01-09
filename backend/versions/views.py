@@ -122,7 +122,7 @@ class SetActiveVersionView(LoginRequiredMixin, View):
         request.session["selected_version_id"] = version.pk
 
         # Create redirect URL
-        redirect_url = f"{reverse('knowledge_list', kwargs={'organization_pk': organization_pk})}?agent={agent.pk}&version={version.pk}"
+        redirect_url = f"{reverse('knowledge_list', kwargs={'organization_pk': organization_pk})}"
 
         response = HttpResponse(status=200)
         response["HX-Redirect"] = redirect_url

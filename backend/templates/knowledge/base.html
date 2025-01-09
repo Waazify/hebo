@@ -1,43 +1,70 @@
 {% extends "base.html" %} {% block content %}
 <div class="flex flex-col min-h-screen" x-data="{ showSearchModal: false }">
   {% csrf_token %}
-  <meta name="selected-version" content="{{ selected_version_id }}">
+  <meta name="selected-version" content="{{ selected_version_id }}" />
   <!-- Main content area -->
   <div class="flex-1 flex">
     <!-- Workspace sidebar -->
     <aside class="w-64 bg-base-200 border-r flex flex-col">
       <!-- Navigation takes remaining space -->
       <nav class="flex-1 p-2">
-        <!-- Search button -->
-        <div class="px-2 mb-2">
-          <button
-            class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-base-content/50 uppercase tracking-wider hover:bg-base-300 rounded-lg"
-            @click="showSearchModal = true"
-          >
-            <span>Search</span>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-4 w-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
+        <!-- Agent Settings Section -->
+        <div>
+          <div class="px-2">
+            <button
+              onclick="redirectToAgentSettings()"
+              class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-base-content/50 uppercase tracking-wider hover:bg-base-300 rounded-lg"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
-              />
-            </svg>
-          </button>
+              <span>Agent</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
+                />
+              </svg>
+            </button>
+          </div>
+          <div class="px-4 h-[1px] bg-base-300 my-2"></div>
         </div>
 
-        <!-- Border separator -->
-        <div class="px-4 border-b border-base-300"></div>
+        <!-- Search Section -->
+        <div>
+          <div class="px-2">
+            <button
+              class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-base-content/50 uppercase tracking-wider hover:bg-base-300 rounded-lg"
+              @click="showSearchModal = true"
+            >
+              <span>Search</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+                />
+              </svg>
+            </button>
+          </div>
+          <div class="px-4 h-[1px] bg-base-300 my-2"></div>
+        </div>
 
-        <!-- Knowledge Base Items -->
-        <div class="mb-6">
-          <div class="px-2 mt-2">
+        <!-- Knowledge Base Section -->
+        <div>
+          <div class="px-2">
             <button
               @click.prevent="createNewPage()"
               class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-base-content/50 uppercase tracking-wider hover:bg-base-300 rounded-lg"
@@ -59,42 +86,23 @@
               </svg>
             </button>
           </div>
-          <ul class="space-y-0.5 knowledge-base-items pl-2">
-            {% for page in pages %}
-            <li class="group relative" x-data="{ showMenu: false }">
-              <div
-                class="flex items-center rounded-lg transition-colors hover:bg-base-300 {% if page.pk == current_page.pk %}bg-base-300{% endif %}"
-              >
-                <a
-                  href="{% url 'page_detail' organization_pk=organization.pk pk=page.pk %}"
-                  class="flex-grow block px-3 py-1.5 text-sm"
+          <div class="px-4 h-[1px] bg-base-300 my-2"></div>
+          <div class="px-2 mt-2">
+            <ul class="space-y-0.5 knowledge-base-items">
+              {% for page in pages %}
+              <li class="group relative" x-data="{ showMenu: false }">
+                <div
+                  class="flex items-center rounded-lg transition-colors hover:bg-base-300 {% if page.pk == current_page.pk %}bg-base-300{% endif %}"
                 >
-                  <span data-page-id="{{ page.pk }}">{{ page.title }}</span>
-                </a>
-                <div class="hidden group-hover:flex items-center pr-2">
-                  <!-- Add button -->
-                  <button class="p-1 hover:bg-base-content/10 rounded-lg">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M12 4.5v15m7.5-7.5h-15"
-                      />
-                    </svg>
-                  </button>
-                  <!-- Menu button -->
-                  <div class="relative">
-                    <button
-                      @click="showMenu = !showMenu"
-                      class="p-1 hover:bg-base-content/10 rounded-lg"
-                    >
+                  <a
+                    href="{% url 'page_detail' organization_pk=organization.pk pk=page.pk %}"
+                    class="flex-grow block px-3 py-1.5 text-sm"
+                  >
+                    <span data-page-id="{{ page.pk }}">{{ page.title }}</span>
+                  </a>
+                  <div class="hidden group-hover:flex items-center pr-2">
+                    <!-- Add button -->
+                    <button class="p-1 hover:bg-base-content/10 rounded-lg">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         class="h-4 w-4"
@@ -106,43 +114,65 @@
                         <path
                           stroke-linecap="round"
                           stroke-linejoin="round"
-                          d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z"
+                          d="M12 4.5v15m7.5-7.5h-15"
                         />
                       </svg>
                     </button>
-                    <!-- Dropdown menu -->
-                    <div
-                      x-show="showMenu"
-                      @click.away="showMenu = false"
-                      x-transition:enter="transition ease-out duration-100"
-                      x-transition:enter-start="transform opacity-0 scale-95"
-                      x-transition:enter-end="transform opacity-100 scale-100"
-                      x-transition:leave="transition ease-in duration-75"
-                      x-transition:leave-start="transform opacity-100 scale-100"
-                      x-transition:leave-end="transform opacity-0 scale-95"
-                      class="absolute right-0 mt-2 w-48 rounded-lg shadow-lg bg-base-100 ring-1 ring-black ring-opacity-5 z-50"
-                    >
-                      <div class="py-1">
-                        <a
-                          href="{% url 'page_update' organization_pk=organization.pk pk=page.pk %}"
-                          class="block px-4 py-2 text-sm hover:bg-base-200"
+                    <!-- Menu button -->
+                    <div class="relative">
+                      <button
+                        @click="showMenu = !showMenu"
+                        class="p-1 hover:bg-base-content/10 rounded-lg"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          class="h-4 w-4"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
                         >
-                          Edit page
-                        </a>
-                        <a
-                          href="{% url 'page_delete' organization_pk=organization.pk pk=page.pk %}"
-                          class="block px-4 py-2 text-sm text-error hover:bg-base-200"
-                        >
-                          Delete page
-                        </a>
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z"
+                          />
+                        </svg>
+                      </button>
+                      <!-- Dropdown menu -->
+                      <div
+                        x-show="showMenu"
+                        @click.away="showMenu = false"
+                        x-transition:enter="transition ease-out duration-100"
+                        x-transition:enter-start="transform opacity-0 scale-95"
+                        x-transition:enter-end="transform opacity-100 scale-100"
+                        x-transition:leave="transition ease-in duration-75"
+                        x-transition:leave-start="transform opacity-100 scale-100"
+                        x-transition:leave-end="transform opacity-0 scale-95"
+                        class="absolute right-0 mt-2 w-48 rounded-lg shadow-lg bg-base-100 ring-1 ring-black ring-opacity-5 z-50"
+                      >
+                        <div class="py-1">
+                          <a
+                            href="{% url 'page_update' organization_pk=organization.pk pk=page.pk %}"
+                            class="block px-4 py-2 text-sm hover:bg-base-200"
+                          >
+                            Edit page
+                          </a>
+                          <a
+                            href="{% url 'page_delete' organization_pk=organization.pk pk=page.pk %}"
+                            class="block px-4 py-2 text-sm text-error hover:bg-base-200"
+                          >
+                            Delete page
+                          </a>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </li>
-            {% endfor %}
-          </ul>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
         </div>
       </nav>
     </aside>
@@ -211,13 +241,15 @@
 <script>
   function createNewPage() {
     // Get the current version ID from the URL or session
-    const version = document.querySelector('meta[name="selected-version"]')?.content;
-    
+    const version = document.querySelector(
+      'meta[name="selected-version"]'
+    )?.content;
+
     // Create new page directly
     const page = {
       title: "New Page",
       content: "# New Page\n\nStart writing here...",
-      version: version
+      version: version,
     };
 
     fetch("{% url 'knowledge_list' organization_pk=organization.pk %}", {
@@ -225,31 +257,38 @@
       headers: {
         "Content-Type": "application/json",
         "X-Requested-With": "XMLHttpRequest",
-        "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value,
+        "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")
+          .value,
       },
       body: JSON.stringify(page),
     })
-    .then(response => {
-      if (!response.ok) {
-        return response.text().then(text => {
-          throw new Error(`Network response was not ok (${response.status}): ${text}`);
+      .then((response) => {
+        if (!response.ok) {
+          return response.text().then((text) => {
+            throw new Error(
+              `Network response was not ok (${response.status}): ${text}`
+            );
+          });
+        }
+        return response.json();
+      })
+      .then((data) => {
+        if (data.status === "success") {
+          window.location.href = data.redirect_url;
+        } else {
+          throw new Error(data.message || "Unknown error occurred");
+        }
+      })
+      .catch((error) => {
+        console.error("Detailed error:", {
+          message: error.message,
+          stack: error.stack,
         });
-      }
-      return response.json();
-    })
-    .then(data => {
-      if (data.status === "success") {
-        window.location.href = data.redirect_url;
-      } else {
-        throw new Error(data.message || 'Unknown error occurred');
-      }
-    })
-    .catch(error => {
-      console.error('Detailed error:', {
-        message: error.message,
-        stack: error.stack
       });
-    });
+  }
+
+  function redirectToAgentSettings() {
+    window.location.href = "{% url 'agent_setting_update' organization_pk=organization.pk %}";
   }
 </script>
 {% endblock %}

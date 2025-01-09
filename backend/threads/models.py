@@ -88,6 +88,55 @@ class Thread(models.Model):
         "Innovative",
     ]
 
+    COLORS = [
+        "Red",
+        "Blue",
+        "Green",
+        "Yellow",
+        "Purple",
+        "Orange",
+        "Pink",
+        "Brown",
+        "Gray",
+        "Black",
+        "White",
+        "Teal",
+        "Cyan",
+        "Magenta",
+        "Lime",
+        "Indigo",
+        "Violet",
+        "Lavender",
+        "Maroon",
+        "Olive",
+        "Navy",
+        "Gold",
+        "Silver",
+        "Beige",
+        "Turquoise",
+        "Coral",
+        "Salmon",
+        "Plum",
+        "Crimson",
+        "Khaki",
+        "Mustard",
+        "Bronze",
+        "Ivory",
+        "Slate",
+        "Charcoal",
+        "Mint",
+        "Emerald",
+        "Sage",
+        "Fuchsia",
+        "Periwinkle",
+        "Denim",
+        "Taupe",
+        "Cerulean",
+        "Burgundy",
+        "Russet",
+        "Aquamarine",
+    ]
+
     NOUNS = [
         "Panda",
         "Eagle",
@@ -185,6 +234,7 @@ class Thread(models.Model):
     contact_name = models.CharField(
         max_length=100, help_text=_("Randomly generated name for the contact")
     )
+    contact_identifier = models.CharField(max_length=100, null=True, blank=True)
 
     objects = ThreadManager()
 

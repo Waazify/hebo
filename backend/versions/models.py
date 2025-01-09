@@ -1,12 +1,16 @@
-from django.db import models
-from django.core.exceptions import ValidationError
-from django.utils.translation import gettext_lazy as _
-from django.db.models.signals import post_save, post_delete
-from django.dispatch import receiver
-from hebo_organizations.models import Organization
 import uuid
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver, Signal
 from django.urls import reverse
+from django.utils.translation import gettext_lazy as _
+
 from core.managers import OrganizationManagerMixin
+from hebo_organizations.models import Organization
+
+
+initial_version_created = Signal()
 
 
 class AgentManager(OrganizationManagerMixin, models.Manager):
@@ -46,7 +50,7 @@ class VersionManager(OrganizationManagerMixin, models.Manager):
         return super().get_queryset().select_related("agent__organization")
 
     def current(self):
-        return self.filter(status='CURRENT').first()
+        return self.filter(status="CURRENT").first()
 
 
 class Version(models.Model):
@@ -149,22 +153,24 @@ class Version(models.Model):
 @receiver(post_save, sender=Agent)
 def create_initial_version(sender, instance, created, **kwargs):
     """
-    Signal handler to create Version 1 when a new Agent is created.
+    Signal handler to create a first version when a new Agent is created.
     """
     if created:
-        Version.objects.create(agent=instance, name="v1", status=Version.Status.NEXT)
+        version = Version.objects.create(
+            agent=instance, name="v1", status=Version.Status.NEXT
+        )
+        initial_version_created.send(
+            sender=sender, created=True, agent=instance, version=version
+        )
 
 
 @receiver(post_save, sender=Organization)
 def create_initial_agent(sender, instance, created, **kwargs):
     """
-    Signal handler to create Agent #1 when a new Organization is created.
+    Signal handler to create a first agent when a new Organization is created.
     """
     if created:
-        Agent.objects.create(
-            organization=instance,
-            name="Your First Agent"
-        )
+        Agent.objects.create(organization=instance, name="Your First Agent")
 
 
 @receiver(post_delete, sender=Version)

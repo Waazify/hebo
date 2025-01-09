@@ -1,8 +1,10 @@
 from django.db import models
+from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
+
 from core.managers import OrganizationManagerMixin
 from hebo_organizations.models import Organization
-from versions.models import Version
+from versions.models import Version, initial_version_created
 
 
 class AgentSettingManager(OrganizationManagerMixin, models.Manager):
@@ -36,6 +38,7 @@ class AgentSetting(models.Model):
         on_delete=models.CASCADE,
         related_name="agent_settings",
         help_text=_("The version these settings belong to"),
+        unique=True,
     )
 
     core_llm = models.CharField(
@@ -58,6 +61,25 @@ class AgentSetting(models.Model):
         indexes = [
             models.Index(fields=["version"]),
         ]
+        constraints = [
+            models.UniqueConstraint(fields=["version"], name="unique_version_settings")
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if not self.pk:
+            existing = AgentSetting.objects.filter(version=self.version).exists()
+            if existing:
+                raise ValidationError(
+                    {"version": _("An AgentSetting already exists for this version.")}
+                )
+
+        super().clean()
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
 
 
 class ToolManager(OrganizationManagerMixin, models.Manager):
@@ -76,7 +98,7 @@ class Tool(models.Model):
         related_name="tools",
         help_text="The agent setting this tool belongs to",
     )
-
+    name = models.CharField(max_length=200)
     description = models.TextField(help_text="Description of what the tool does")
     output_template = models.TextField(help_text="Template to format the tool's output")
     tool_type = models.CharField(
@@ -101,10 +123,10 @@ class Tool(models.Model):
         null=True,
         help_text="Database connection string for Data Source type tools",
     )
-    sql_query = models.TextField(
+    query = models.TextField(
         blank=True,
         null=True,
-        help_text="SQL query to execute for Data Source type tools",
+        help_text="Query to execute for Data Source type tools",
     )
 
     objects = ToolManager()
@@ -129,11 +151,22 @@ class Tool(models.Model):
                         "db_connection_string": "Database connection string is required for Data Source type tools"
                     }
                 )
-            if not self.sql_query:
+            if not self.query:
                 raise ValidationError(
-                    {"sql_query": "SQL query is required for Data Source type tools"}
+                    {"query": "Query is required for Data Source type tools"}
                 )
 
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
+
+
+@receiver(initial_version_created)
+def create_default_agent_setting(sender, created, agent, version, **kwargs):
+    """
+    Signal handler to create a default agent setting when a new agent is created.
+    """
+    if created:
+        AgentSetting.objects.create(
+            organization=agent.organization, version=version
+        )
