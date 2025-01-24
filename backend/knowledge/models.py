@@ -46,7 +46,7 @@ class Page(models.Model):
         help_text=_("The version this page belongs to"),
     )
 
-    parts: "RelatedManager[Part]"
+    parts: "RelatedManager[Part]"  # Added for type hinting
 
     title = models.CharField(max_length=200)
     content = models.TextField(
@@ -124,7 +124,7 @@ class Page(models.Model):
                         "start_line": current_line,
                         "end_line": end_line,
                         "content_hash": content_hash,
-                        "part_type": PartType.BEHAVIOUR,  # Dummy assignment
+                        "content_type": ContentType.BEHAVIOUR,  # Dummy assignment
                         "is_valid": True,
                     },
                 )
@@ -160,7 +160,7 @@ class Page(models.Model):
         return len(self.content.split())
 
 
-class PartType(models.TextChoices):
+class ContentType(models.TextChoices):
     """Available part types for content sections."""
 
     BEHAVIOUR = "behaviour", "Behaviour"
@@ -196,7 +196,9 @@ class Part(models.Model):
     )
 
     # Part metadata
-    part_type = models.CharField(max_length=20, choices=PartType.choices, db_index=True)
+    content_type = models.CharField(
+        max_length=20, choices=ContentType.choices, db_index=True
+    )
     identifier = models.CharField(
         max_length=100, help_text="Unique identifier for this part within its page"
     )
@@ -223,11 +225,11 @@ class Part(models.Model):
             )
         ]
         indexes = [
-            models.Index(fields=["page", "part_type", "is_valid"]),
+            models.Index(fields=["page", "content_type", "is_valid"]),
         ]
 
     def clean(self):
-        if self.is_handover and self.part_type == PartType.BEHAVIOUR:
+        if self.is_handover and self.content_type == ContentType.BEHAVIOUR:
             raise ValidationError(
                 {
                     "is_handover": "Handover tag can only be applied to scenarios and examples"
@@ -267,7 +269,7 @@ class Part(models.Model):
         return sha256(content.encode()).hexdigest()
 
     def __str__(self):
-        return f"{self.part_type}: {self.identifier} ({self.page.title})"
+        return f"{self.content_type}: {self.identifier} ({self.page.title})"
 
 
 def cleanup_invalid_parts():
@@ -285,7 +287,7 @@ class VectorManager(OrganizationManagerMixin, models.Manager):
         return super().get_queryset().select_related("part__page__organization")
 
 
-class Vector(models.Model):
+class VectorStore(models.Model):
     """
     Stores vector embeddings for Page Parts using pgvector.
     The vector dimensions vary by embedding model:
@@ -320,17 +322,17 @@ class Vector(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
+    metadata = models.JSONField(default=dict)
     objects = VectorManager()
 
     class Meta:
         indexes = [
-            models.Index(fields=["part", "embedding_model"]),
+            models.Index(fields=["id"]),
         ]
         constraints = [
             models.UniqueConstraint(
                 fields=["part", "embedding_model"],
-                name="unique_vector_per_part_and_model",
+                name="unique_vector_per_part",
             )
         ]
 
