@@ -1,11 +1,17 @@
 import random
-from django.db import models
+from typing import TYPE_CHECKING
+
+from django.db import models, transaction
 from django.utils.translation import gettext_lazy as _
 from core.managers import OrganizationManagerMixin
-from versions.models import Version
 from hebo_organizations.models import Organization
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db.models.signals import pre_save
+from django.dispatch import receiver
+
+if TYPE_CHECKING:
+    from django.db.models.manager import RelatedManager
 
 
 class ThreadManager(OrganizationManagerMixin, models.Manager):
@@ -13,11 +19,6 @@ class ThreadManager(OrganizationManagerMixin, models.Manager):
 
 
 class Thread(models.Model):
-    class WritingStatus(models.TextChoices):
-        IDLE = "idle", _("Idle")
-        WRITING = "writing", _("Writing")
-        ERROR = "error", _("Error")
-
     ADJECTIVES = [
         "Happy",
         "Clever",
@@ -214,41 +215,36 @@ class Thread(models.Model):
         related_name="threads",
         help_text=_("Organization this thread belongs to"),
     )
-    version = models.ForeignKey(
-        Version,
-        on_delete=models.CASCADE,
-        related_name="threads",
-        help_text=_("The version this thread belongs to"),
-    )
     is_open = models.BooleanField(
         default=True, help_text=_("Whether the thread is open or closed")
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    writing_status = models.CharField(
-        max_length=20,
-        choices=WritingStatus.choices,
-        default=WritingStatus.IDLE,
-        help_text=_("Current writing status of the thread"),
-    )
     contact_name = models.CharField(
         max_length=100, help_text=_("Randomly generated name for the contact")
     )
     contact_identifier = models.CharField(max_length=100, null=True, blank=True)
 
+    runs: "RelatedManager[Run]"  # Added for type hinting
+
     objects = ThreadManager()
 
     class Meta:
         ordering = ["-updated_at"]
-        indexes = [
-            models.Index(fields=["organization", "-updated_at"]),
-            models.Index(fields=["version", "-updated_at"]),
-        ]
 
     def save(self, *args, **kwargs):
         if not self.contact_name:
             self.contact_name = self._generate_contact_name()
-        super().save(*args, **kwargs)
+
+        # Expire running runs when thread is updated
+        if self.pk:  # Only for existing threads
+            with transaction.atomic():
+                self.runs.filter(status=Run.RunStatus.RUNNING).update(
+                    status=Run.RunStatus.EXPIRED
+                )
+                super().save(*args, **kwargs)
+        else:
+            super().save(*args, **kwargs)
 
     def _generate_contact_name(self):
         """Generate a random contact name combining an adjective and a noun."""
@@ -264,9 +260,11 @@ class MessageManager(OrganizationManagerMixin, models.Manager):
 
 class Message(models.Model):
     class MessageType(models.TextChoices):
-        ASSISTANT = "assistant", _("Assistant")
-        USER = "user", _("User")
+        AI = "ai", _("AI")
+        HUMAN = "human", _("Human")
+        HUMAN_AGENT = "human_agent", _("Human Agent")
         TOOL = "tool", _("Tool")
+        COMMENT = "comment", _("Comment")
 
     thread = models.ForeignKey(
         Thread,
@@ -315,6 +313,9 @@ class Message(models.Model):
         self.clean()
         super().save(*args, **kwargs)
 
+        # Update the thread's updated_at timestamp
+        self.thread.save(update_fields=["updated_at"])
+
 
 class SummaryManager(OrganizationManagerMixin, models.Manager):
     def get_queryset(self):
@@ -346,3 +347,52 @@ class Summary(models.Model):
             models.Index(fields=["thread"]),
             models.Index(fields=["-updated_at"]),
         ]
+
+
+class RunManager(OrganizationManagerMixin, models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().select_related("thread__organization")
+
+
+class Run(models.Model):
+    class RunStatus(models.TextChoices):
+        CREATED = "created", _("Created")
+        RUNNING = "running", _("Running")
+        COMPLETED = "completed", _("Completed")
+        ERROR = "error", _("Error")
+        EXPIRED = "expired", _("Expired")
+
+    version = models.ForeignKey(
+        "versions.Version",
+        on_delete=models.CASCADE,
+        related_name="runs",
+        help_text=_("The version this run belongs to"),
+    )
+
+    thread = models.ForeignKey(
+        Thread,
+        on_delete=models.CASCADE,
+        related_name="runs",
+        help_text=_("The thread this run belongs to"),
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=RunStatus.choices,
+        default=RunStatus.CREATED,
+        help_text=_("Current status of the run"),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = RunManager()
+
+
+@receiver(pre_save, sender=Run)
+def update_thread_on_run_creation(sender, instance, **kwargs):
+    """
+    Signal handler to update the thread's updated_at timestamp when a new run is created
+    """
+    if instance.pk is None:  # New run being created
+        with transaction.atomic():
+            # Update thread timestamp
+            instance.thread.save(update_fields=["updated_at"])
