@@ -1,0 +1,116 @@
+<div class="space-y-4">
+  <h3 class="font-bold text-lg mb-4">Add New Model</h3>
+
+  <form class="space-y-4" id="adapter-form-{{ form_id }}" data-model-type="{{ adapter_type }}">
+    {% csrf_token %}
+
+    <div class="form-control">
+      <label class="label">
+        <span class="label-text">Provider</span>
+      </label>
+      <select
+        name="provider"
+        class="select select-bordered w-full"
+        x-model="selectedProvider"
+      >
+        <option value="">Select a provider</option>
+        <option value="anthropic">Anthropic</option>
+        <option value="openai">OpenAI</option>
+        <option value="azure">Azure</option>
+        <option value="bedrock">AWS Bedrock</option>
+        <option value="vertex-ai">Vertex AI</option>
+      </select>
+    </div>
+
+    <div class="form-control">
+      <label class="label">
+        <span class="label-text">Model Name</span>
+      </label>
+      <input
+        type="text"
+        name="name"
+        class="input input-bordered w-full"
+        placeholder="e.g., gpt-4, claude-3-sonnet"
+      />
+    </div>
+
+    <div class="form-control">
+      <label class="label">
+        <span class="label-text">API Key</span>
+      </label>
+      <input type="password" name="api_key" class="input input-bordered w-full" />
+    </div>
+
+    <div class="form-control">
+      <label class="label">
+        <span class="label-text">API Base URL (Optional)</span>
+      </label>
+      <input
+        type="url"
+        name="api_base"
+        class="input input-bordered w-full"
+        placeholder="https://api.example.com"
+      />
+    </div>
+
+    <div class="form-control" x-show="selectedProvider === 'bedrock'">
+      <label class="label">
+        <span class="label-text">AWS Region</span>
+      </label>
+      <input
+        type="text"
+        name="aws_region"
+        class="input input-bordered w-full"
+        placeholder="us-east-1"
+      />
+    </div>
+
+    <div class="flex justify-end mt-4">
+      <button
+        type="button"
+        class="btn btn-primary"
+        @click="createAdapter($el.closest('form'))"
+        :disabled="!selectedProvider"
+      >
+        Add Model
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+  function createAdapter(form) {
+    const formData = new FormData(form);
+    
+    // Get the model type from the data attribute
+    const modelType = form.dataset.modelType;
+    formData.set('model_type', modelType);  // Use set instead of append to ensure single value
+
+    fetch("{% url 'llm_adapter_create' organization_pk=organization.pk %}", {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value,
+      },
+      body: formData,
+    })
+    .then(response => response.json())
+    .then((data) => {
+      if (data.status === "success") {
+        window.location.reload();
+      } else {
+        if (data.errors) {
+          const errorMessages = Object.entries(data.errors)
+            .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
+            .join('\n');
+          alert(`Validation errors:\n${errorMessages}`);
+        } else {
+          alert(data.message || "Error creating adapter");
+        }
+      }
+    })
+    .catch((error) => {
+      console.error("Error:", error);
+      alert("Error creating adapter");
+    });
+  }
+</script>

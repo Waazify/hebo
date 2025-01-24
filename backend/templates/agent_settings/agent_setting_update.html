@@ -1,39 +1,95 @@
 {% extends "knowledge/base.html" %}
 
 {% block knowledge_content %}
-<div class="max-w-3xl mx-auto py-20 px-12" x-data="{ 
-    showActionModal: false,
-    showDataSourceModal: false,
-    selectedLang: 'curl',
-    showKey: false,
-    newKeyName: '',
-    generatedKey: null,
-    tools: [],
-    advancedOpen: false
-}">
-    <div class="prose max-w-none">
-        <div class="space-y-6">
-            <h1 class="text-4xl font-bold mb-8">Agent Configuration</h1>
+<!-- Move the form outside the Alpine.js scope -->
+<form method="POST" action="{% url 'agent_setting_update' organization_pk=organization.pk %}" class="max-w-3xl mx-auto py-20 px-12">
+    {% csrf_token %}
+    
+    <!-- Show messages -->
+    {% if messages %}
+    <div class="mb-8">
+        {% for message in messages %}
+        <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-error{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
-            <form method="POST">
-                {% csrf_token %}
-                
+    <div x-data="{ 
+        showActionModal: false,
+        showDataSourceModal: false,
+        selectedLang: 'curl',
+        showKey: false,
+        newKeyName: '',
+        generatedKey: null,
+        tools: [],
+        advancedOpen: false,
+        newAdapterFields: {
+            core: false,
+            condense: false,
+            embeddings: false
+        },
+        selectedProvider: '',
+        adapterType: null
+    }">
+        <div class="prose max-w-none">
+            <div class="space-y-6">
+                <h1 class="text-4xl font-bold mb-8">Agent Configuration</h1>
+
                 <!-- Core LLM -->
                 <div class="form-control">
                     <label class="label">
                         <span class="label-text font-bold">Core LLM</span>
                     </label>
-                    <select name="core_llm" class="select select-bordered w-full">
-                        <option value="gpt4">GPT-4</option>
-                        <option value="gpt4-mini">GPT-4 mini</option>
-                        <option value="claude-3-sonnet">Claude 3 Sonnet</option>
-                        <option value="claude-3-haiku">Claude 3 Haiku</option>
-                    </select>
+                    <div class="flex gap-2">
+                        <select name="core_llm" 
+                                class="select select-bordered flex-1"
+                                @change="if ($event.target.value === 'new') {
+                                    newAdapterFields.core = true;
+                                    adapterType = 'chat';
+                                    selectedProvider = '';
+                                } else {
+                                    newAdapterFields.core = false;
+                                }">
+                            {% if not chat_adapters %}
+                                <option value="">---</option>
+                            {% else %}
+                                {% for adapter in chat_adapters %}
+                                    <option value="{{ adapter.id }}" 
+                                            {% if agent_setting.core_llm_id == adapter.id %}selected{% endif %}>
+                                        {{ adapter.name }} 
+                                        {% if adapter.is_default %}(Default){% endif %}
+                                    </option>
+                                {% endfor %}
+                            {% endif %}
+                            <option value="new">+ Add new model</option>
+                        </select>
+                        {% if agent_setting.core_llm and not agent_setting.core_llm.is_default %}
+                            <a href="{% url 'llm_adapter_delete' organization_pk=organization.pk pk=agent_setting.core_llm.id %}" 
+                               class="btn btn-ghost btn-square">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                </svg>
+                            </a>
+                        {% endif %}
+                    </div>
                     <label class="label">
                         <span class="label-text-alt">
                             <strong>Choose the AI model that powers your answers and actions.</strong><br/>
-                            This model will be the brain behind generating answers and deciding whether to use additional tools based on the context. Pick a model based on your needs: higher-performing models like GPT-4o are best for complex tasks, while lighter models like GPT-4o mini are faster and more cost-efficient.                        </span>
+                            This model will be the brain behind generating answers and deciding whether to use additional tools based on the context.
+                        </span>
                     </label>
+                </div>
+
+                <!-- New Core LLM Adapter Form -->
+                <div x-show="newAdapterFields.core" 
+                     x-transition:enter="transition ease-out duration-200"
+                     x-transition:enter-start="opacity-0 transform -translate-y-2"
+                     x-transition:enter-end="opacity-100 transform translate-y-0"
+                     class="card bg-base-200 p-6 mt-4"
+                     style="display: none;">
+                    {% include "agent_settings/includes/adapter_form.html" with adapter_type="chat" form_id="core" %}
                 </div>
 
                 <!-- Advanced Settings -->
@@ -41,35 +97,69 @@
                     <div class="h-9 px-4 flex items-center justify-between cursor-pointer"
                          @click="advancedOpen = !advancedOpen">
                         <span class="text-lg font-bold">Advanced</span>
-                        <svg :class="{'rotate-180': advancedOpen}" class="w-6 h-6 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        <svg :class="{'rotate-180': advancedOpen}" class="w-6 h-6 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
                     </div>
                     <div x-show="advancedOpen" 
                          x-transition:enter="transition ease-out duration-200"
                          x-transition:enter-start="opacity-0 transform -translate-y-2"
                          x-transition:enter-end="opacity-100 transform translate-y-0"
-                         x-transition:leave="transition ease-in duration-200"
-                         x-transition:leave-start="opacity-100 transform translate-y-0"
-                         x-transition:leave-end="opacity-0 transform -translate-y-2"
                          class="p-4 space-y-6">
+                        
                         <!-- Condense LLM -->
                         <div class="form-control">
                             <label class="label">
                                 <span class="label-text font-bold">Condense LLM</span>
                             </label>
-                            <select name="condense_llm" class="select select-bordered w-full">
-                                <option value="gpt4o" {% if agent_setting.condense_llm == 'gpt4o' %}selected{% endif %}>GPT-4o</option>
-                                <option value="gpt4o_mini" {% if agent_setting.condense_llm == 'gpt4o_mini' %}selected{% endif %}>GPT-4o mini</option>
-                                <option value="o1" {% if agent_setting.condense_llm == 'o1' %}selected{% endif %}>o1</option>
-                                <option value="o1_mini" {% if agent_setting.condense_llm == 'o1_mini' %}selected{% endif %}>o1 mini</option>
-                                <option value="claude_3_5_sonnet" {% if agent_setting.condense_llm == 'claude_3_5_sonnet' %}selected{% endif %}>Claude 3.5 Sonnet</option>
-                                <option value="claude_3_5_haiku" {% if agent_setting.condense_llm == 'claude_3_5_haiku' %}selected{% endif %}>Claude 3.5 Haiku</option>
-                            </select>
+                            <div class="flex gap-2">
+                                <select name="condense_llm" 
+                                        class="select select-bordered flex-1"
+                                        @change="if ($event.target.value === 'new') {
+                                            newAdapterFields.condense = true;
+                                            adapterType = 'chat';
+                                            selectedProvider = '';
+                                        } else {
+                                            newAdapterFields.condense = false;
+                                        }">
+                                    {% if not chat_adapters %}
+                                        <option value="">---</option>
+                                    {% else %}
+                                        {% for adapter in chat_adapters %}
+                                            <option value="{{ adapter.id }}" 
+                                                    {% if agent_setting.condense_llm_id == adapter.id %}selected{% endif %}>
+                                                {{ adapter.name }} 
+                                                {% if adapter.is_default %}(Default){% endif %}
+                                            </option>
+                                        {% endfor %}
+                                    {% endif %}
+                                    <option value="new">+ Add new model</option>
+                                </select>
+                                {% if agent_setting.condense_llm and not agent_setting.condense_llm.is_default %}
+                                    <a href="{% url 'llm_adapter_delete' organization_pk=organization.pk pk=agent_setting.condense_llm.id %}"
+                                       class="btn btn-ghost btn-square">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                        </svg>
+                                    </a>
+                                {% endif %}
+                            </div>
                             <label class="label">
                                 <span class="label-text-alt">
                                     <strong>Select the model to condense conversations and craft retrieval queries.</strong><br/>
-                                    This model simplifies ongoing conversations into concise, context-rich questions that guide the retrieval process. Choose a model based on the complexity and performance you need: advanced models handle nuanced contexts better, while lighter models are faster and more efficient.
+                                    This model simplifies ongoing conversations into concise, context-rich questions that guide the retrieval process.
                                 </span>
                             </label>
+                        </div>
+
+                        <!-- New Condense LLM Adapter Form -->
+                        <div x-show="newAdapterFields.condense" 
+                             x-transition:enter="transition ease-out duration-200"
+                             x-transition:enter-start="opacity-0 transform -translate-y-2"
+                             x-transition:enter-end="opacity-100 transform translate-y-0"
+                             class="card bg-base-200 p-6 mt-4"
+                             style="display: none;">
+                            {% include "agent_settings/includes/adapter_form.html" with adapter_type="chat" form_id="condense" %}
                         </div>
 
                         <!-- Embeddings -->
@@ -77,59 +167,56 @@
                             <label class="label">
                                 <span class="label-text font-bold">Embeddings</span>
                             </label>
-                            <select name="embeddings" class="select select-bordered w-full">
-                                <option value="ada002" {% if agent_setting.embeddings == 'ada002' %}selected{% endif %}>text-embedding-ada-002</option>
-                                <option value="minilm" {% if agent_setting.embeddings == 'minilm' %}selected{% endif %}>all-MiniLM-L6-v2</option>
-                                <option value="mpnet" {% if agent_setting.embeddings == 'mpnet' %}selected{% endif %}>all-mpnet-base-v2</option>
-                                <option value="bger" {% if agent_setting.embeddings == 'bger' %}selected{% endif %}>bge-large-en</option>
-                            </select>
+                            <div class="flex gap-2">
+                                <select name="embeddings" 
+                                        class="select select-bordered flex-1"
+                                        @change="if ($event.target.value === 'new') {
+                                            newAdapterFields.embeddings = true;
+                                            adapterType = 'embedding';
+                                            selectedProvider = '';
+                                        } else {
+                                            newAdapterFields.embeddings = false;
+                                        }">
+                                    {% if not embedding_adapters %}
+                                        <option value="">---</option>
+                                    {% else %}
+                                        {% for adapter in embedding_adapters %}
+                                            <option value="{{ adapter.id }}"
+                                                    {% if agent_setting.embeddings_id == adapter.id %}selected{% endif %}>
+                                                {{ adapter.name }}
+                                                {% if adapter.is_default %}(Default){% endif %}
+                                            </option>
+                                        {% endfor %}
+                                    {% endif %}
+                                    <option value="new">+ Add new model</option>
+                                </select>
+                                {% if agent_setting.embeddings and not agent_setting.embeddings.is_default %}
+                                    <a href="{% url 'llm_adapter_delete' organization_pk=organization.pk pk=agent_setting.embeddings.id %}"
+                                       class="btn btn-ghost btn-square">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                        </svg>
+                                    </a>
+                                {% endif %}
+                            </div>
                             <label class="label">
                                 <span class="label-text-alt">
                                     <strong>Select the embedding model to convert text into numerical vectors for retrieval.</strong><br/>
-                                    This model transforms text into numerical vectors, capturing semantic meaning for effective information retrieval. Choose a model that aligns with your performance and accuracy requirements.
+                                    This model transforms text into numerical vectors, capturing semantic meaning for effective information retrieval.
                                     <br/><br/>
                                     ⚠️ Changing the embedding model will require the knowledge index to be recreated. This process may take some time depending on the size of your dataset.
                                 </span>
                             </label>
                         </div>
 
-                        <!-- Extensions -->
-                        <div class="form-control">
-                            <label class="label">
-                                <span class="label-text font-bold">Extensions</span>
-                            </label>
-                            
-                            <!-- Extension buttons -->
-                            <div class="space-y-6">
-                                <div class="flex gap-2">
-                                    <button type="button"
-                                            class="btn btn-outline btn-primary btn-sm"
-                                            @click="showActionModal = true">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                                        </svg>
-                                        Add Action
-                                    </button>
-                                    
-                                    <button type="button"
-                                            class="btn btn-outline btn-primary btn-sm"
-                                            @click="showDataSourceModal = true">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                                        </svg>
-                                        Add Data Source
-                                    </button>
-                                </div>
-
-                                <!-- Tool list -->
-                                <div class="space-y-6">
-                                    <template x-for="(tool, index) in tools" :key="index">
-                                        <div class="card bg-base-200 shadow-sm border border-base-300">
-                                            <!-- Tool card content will be added later -->
-                                        </div>
-                                    </template>
-                                </div>
-                            </div>
+                        <!-- New Embeddings Adapter Form -->
+                        <div x-show="newAdapterFields.embeddings" 
+                             x-transition:enter="transition ease-out duration-200"
+                             x-transition:enter-start="opacity-0 transform -translate-y-2"
+                             x-transition:enter-end="opacity-100 transform translate-y-0"
+                             class="card bg-base-200 p-6 mt-4"
+                             style="display: none;">
+                            {% include "agent_settings/includes/adapter_form.html" with adapter_type="embedding" form_id="embeddings" %}
                         </div>
 
                         <!-- Switches -->
@@ -173,16 +260,17 @@
                 <div class="mt-6">
                     <button type="submit" class="btn btn-primary">Save Changes</button>
                 </div>
-            </form>
-
-            <!-- Share Agent Section -->
-            <h2 class="text-2xl font-semibold mt-8">Share Agent</h2>
-            <!-- Add the share agent section -->
-
-            <!-- API Integration Section -->
-            <h2 class="text-2xl font-semibold mt-8">API Integration</h2>
-            <!-- Add the API integration section -->
+            </div>
         </div>
     </div>
-</div>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(e) {
+        // Don't prevent default - let the form submit normally
+    });
+});
+</script>
 {% endblock %} 

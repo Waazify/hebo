@@ -1,6 +1,7 @@
 from django.db import models
 from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
+from django.core.exceptions import ValidationError
 
 from core.managers import OrganizationManagerMixin
 from hebo_organizations.models import Organization
@@ -11,28 +12,103 @@ class AgentSettingManager(OrganizationManagerMixin, models.Manager):
     pass
 
 
+class LLMAdapter(models.Model):
+    class ModelType(models.TextChoices):
+        CHAT = "chat", "Chat"
+        EMBEDDING = "embedding", "Embedding"
+
+    class ProviderType(models.TextChoices):
+        ANTHROPIC = "anthropic", "Anthropic"
+        OPENAI = "openai", "OpenAI"
+        AZURE = "azure", "Azure"
+        BEDROCK = "bedrock", "AWS Bedrock"
+        VERTEX = "vertex-ai", "Vertex AI"
+
+    is_default = models.BooleanField(
+        default=False,
+        help_text=_("If True, this adapter is available to all organizations"),
+    )
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="llm_adapters",
+        help_text=_("Organization this adapter belongs to (null if default)"),
+    )
+    model_type = models.CharField(
+        max_length=20,
+        choices=ModelType.choices,
+        help_text=_("Type of model (chat, embedding, or vision)"),
+        default=ModelType.CHAT,
+    )
+    provider = models.CharField(
+        max_length=20,
+        choices=ProviderType.choices,
+        help_text=_("AI provider for this model"),
+    )
+    api_base = models.URLField(
+        blank=True,
+        help_text=_("Base URL for API calls (if different from provider default)"),
+    )
+    name = models.CharField(
+        max_length=100,
+        help_text=_("Name/ID of the model from the provider"),
+    )
+    aws_region = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text=_("AWS region (required for Bedrock)"),
+    )
+    api_key = models.CharField(
+        max_length=2000,
+        help_text=_("API key, service account JSON, or other authentication credentials"),
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["organization", "model_type"]),
+            models.Index(fields=["is_default", "model_type"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(is_default=True, organization__isnull=True) |
+                    models.Q(is_default=False, organization__isnull=False)
+                ),
+                name="organization_xor_default"
+            )
+        ]
+
+    def clean(self):
+        if self.is_default and self.organization:
+            raise ValidationError(
+                _("Default adapters cannot be associated with an organization")
+            )
+        if not self.is_default and not self.organization:
+            raise ValidationError(
+                _("Custom adapters must be associated with an organization")
+            )
+        if self.provider == self.ProviderType.BEDROCK and not self.aws_region:
+            raise ValidationError(
+                _("AWS region is required for Bedrock provider")
+            )
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.name} ({self.get_provider_display()} - {'Default' if self.is_default else 'Custom'})"  # type: ignore
+
+
 class AgentSetting(models.Model):
-    class LLMChoices(models.TextChoices):
-        GPT4_O = "gpt4o", "GPT-4o"
-        GPT4_O_MINI = "gpt4o_mini", "GPT-4o mini"
-        O1 = "o1", "o1"
-        O1_MINI = "o1_mini", "o1 mini"
-        CLAUDE_3_5_SONNET = "claude_3_5_sonnet", "Claude-3.5-Sonnet"
-        CLAUDE_3_5_HAIKU = "claude_3_5_haiku", "Claude-3.5-Haiku"
-
-    class EmbeddingChoices(models.TextChoices):
-        ADA_002 = "ada002", "text-embedding-ada-002"
-        MINILM = "minilm", "all-MiniLM-L6-v2"
-        MPNet = "mpnet", "all-mpnet-base-v2"
-        BGER = "bger", "bge-large-en"
-
     organization = models.ForeignKey(
         Organization,
         on_delete=models.CASCADE,
         related_name="agent_settings",
         help_text=_("Organization this agent belongs to"),
     )
-
     version = models.OneToOneField(
         Version,
         on_delete=models.CASCADE,
@@ -40,17 +116,37 @@ class AgentSetting(models.Model):
         help_text=_("The version these settings belong to"),
         unique=True,
     )
-
-    core_llm = models.CharField(
-        max_length=20, choices=LLMChoices.choices, default=LLMChoices.GPT4_O
+    core_llm = models.ForeignKey(
+        LLMAdapter,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="core_llm_settings",
+        limit_choices_to={"model_type": LLMAdapter.ModelType.CHAT},
     )
-    condense_llm = models.CharField(
-        max_length=20, choices=LLMChoices.choices, default=LLMChoices.GPT4_O_MINI
+    condense_llm = models.ForeignKey(
+        LLMAdapter,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="condense_llm_settings",
+        limit_choices_to={"model_type": LLMAdapter.ModelType.CHAT},
     )
-    embeddings = models.CharField(
-        max_length=20,
-        choices=EmbeddingChoices.choices,
-        default=EmbeddingChoices.ADA_002,
+    embeddings = models.ForeignKey(
+        LLMAdapter,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="embedding_settings",
+        limit_choices_to={"model_type": LLMAdapter.ModelType.EMBEDDING},
+    )
+    vision_llm = models.ForeignKey(
+        LLMAdapter,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="vision_llm_settings",
+        limit_choices_to={"model_type": LLMAdapter.ModelType.CHAT},
     )
     delay = models.BooleanField(default=False)
     hide_tool_messages = models.BooleanField(default=False)
@@ -66,16 +162,13 @@ class AgentSetting(models.Model):
         ]
 
     def clean(self):
-        from django.core.exceptions import ValidationError
-
-        if not self.pk:
-            existing = AgentSetting.objects.filter(version=self.version).exists()
-            if existing:
-                raise ValidationError(
-                    {"version": _("An AgentSetting already exists for this version.")}
-                )
-
         super().clean()
+        # Validate that the organization has access to the selected adapters
+        for field in [self.core_llm, self.condense_llm, self.embeddings, self.vision_llm]:
+            if field and not field.is_default and field.organization != self.organization:
+                raise ValidationError(
+                    _(f"Selected adapter {field.name} is not available for this organization")
+                )
 
     def save(self, *args, **kwargs):
         self.clean()

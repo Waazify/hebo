@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.admin import ModelAdmin
 
-from .models import AgentSetting, Tool
+from .models import AgentSetting, LLMAdapter, Tool
 
 
 @admin.register(AgentSetting)
@@ -31,3 +31,9 @@ class AgentSettingAdmin(ModelAdmin):
 class ToolAdmin(ModelAdmin):
     list_display = ["name", "description", "tool_type"]
     search_fields = ["name", "description"]
+
+
+@admin.register(LLMAdapter)
+class LLMAdapterAdmin(ModelAdmin):
+    list_display = ["name", "is_default", "model_type", "provider"]
+    search_fields = ["name"]
