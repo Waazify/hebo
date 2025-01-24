@@ -16,6 +16,8 @@ from dotenv import load_dotenv
 # import logging
 import sys
 
+from __version__ import __version__
+
 # Load environment variables
 load_dotenv()
 
@@ -40,6 +42,7 @@ ALLOWED_HOSTS = [
 
 
 # Application definition
+APP_VERSION = __version__
 
 INSTALLED_APPS = [
     # Django built-in apps
@@ -84,7 +87,7 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
 ]
 
-ROOT_URLCONF = "urls"
+ROOT_URLCONF = "core.urls"
 
 TEMPLATES = [
     {
@@ -104,7 +107,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "wsgi.application"
+WSGI_APPLICATION = "core.wsgi.application"
 
 
 # Database
