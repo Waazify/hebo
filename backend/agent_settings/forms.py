@@ -12,6 +12,8 @@ class LLMAdapterForm(forms.ModelForm):
             "api_base",
             "api_key",
             "aws_region",
+            "aws_access_key_id",
+            "aws_secret_access_key",
         ]
         widgets = {
             "api_key": forms.PasswordInput(render_value=True),
@@ -21,15 +23,17 @@ class LLMAdapterForm(forms.ModelForm):
         self.organization = organization
         super().__init__(*args, **kwargs)
 
-        # Make aws_region required only for Bedrock provider
+        # Make aws fields are required only for Bedrock provider
         self.fields["aws_region"].required = False
-        # Make api_base optional
+        self.fields["aws_access_key_id"].required = False
+        self.fields["aws_secret_access_key"].required = False
+        # Make api_base and api_key optional
         self.fields["api_base"].required = False
+        self.fields["api_key"].required = False
 
         # Make sure these fields are required
         self.fields["provider"].required = True
         self.fields["name"].required = True
-        self.fields["api_key"].required = True
         self.fields["model_type"].required = True
 
         # Add help texts
@@ -37,6 +41,8 @@ class LLMAdapterForm(forms.ModelForm):
         self.fields["api_base"].widget.attrs["class"] = "input input-bordered w-full"
         self.fields["name"].widget.attrs["class"] = "input input-bordered w-full"
         self.fields["aws_region"].widget.attrs["class"] = "input input-bordered w-full"
+        self.fields["aws_access_key_id"].widget.attrs["class"] = "input input-bordered w-full"
+        self.fields["aws_secret_access_key"].widget.attrs["class"] = "input input-bordered w-full"
 
     def clean(self):
         cleaned_data = super().clean()
@@ -113,6 +119,8 @@ class AgentSettingForm(forms.ModelForm):
                 api_base=form.cleaned_data["api_base"],
                 api_key=form.cleaned_data["api_key"],
                 aws_region=form.cleaned_data["aws_region"],
+                aws_access_key_id=form.cleaned_data["aws_access_key_id"],
+                aws_secret_access_key=form.cleaned_data["aws_secret_access_key"],
             )
 
             # Update the form's data based on which field triggered the new adapter

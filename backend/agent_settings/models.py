@@ -23,6 +23,7 @@ class LLMAdapter(models.Model):
         AZURE = "azure", "Azure"
         BEDROCK = "bedrock", "AWS Bedrock"
         VERTEX = "vertex-ai", "Vertex AI"
+        VOYAGE = "voyage", "Voyage"
 
     is_default = models.BooleanField(
         default=False,
@@ -62,7 +63,18 @@ class LLMAdapter(models.Model):
     )
     api_key = models.CharField(
         max_length=2000,
+        blank=True,
         help_text=_("API key, service account JSON, or other authentication credentials"),
+    )
+    aws_access_key_id = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text=_("AWS Access Key ID (required for Bedrock)"),
+    )
+    aws_secret_access_key = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text=_("AWS Secret Access Key (required for Bedrock)"),
     )
 
     class Meta:
@@ -89,9 +101,19 @@ class LLMAdapter(models.Model):
             raise ValidationError(
                 _("Custom adapters must be associated with an organization")
             )
-        if self.provider == self.ProviderType.BEDROCK and not self.aws_region:
+        if self.provider == self.ProviderType.BEDROCK and (
+            not self.aws_region
+            or not self.aws_access_key_id
+            or not self.aws_secret_access_key
+        ):
             raise ValidationError(
-                _("AWS region is required for Bedrock provider")
+                _(
+                    "AWS region, access key ID, and secret access key are required for Bedrock provider"
+                )
+            )
+        if self.provider != self.ProviderType.BEDROCK and not self.api_key:
+            raise ValidationError(
+                _("API key is required for non-Bedrock providers")
             )
 
     def save(self, *args, **kwargs):
