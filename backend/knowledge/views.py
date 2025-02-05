@@ -14,11 +14,16 @@ from django.views.generic import (
     ListView,
     UpdateView,
 )
+from django.db import transaction
 
 from core.mixins import OrganizationPermissionMixin
 from versions.models import Version
 from .forms import PageForm
 from .models import Page
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def extract_title_and_content(content: str) -> tuple[str, str]:
@@ -49,15 +54,12 @@ class KnowledgeBaseView(LoginRequiredMixin, OrganizationPermissionMixin, ListVie
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        # Get the selected version ID from session
         version_id = self.request.session.get("selected_version_id")
         queryset = super().get_queryset()
-
-        # Filter pages by version if we have one selected
         if version_id:
             queryset = queryset.filter(version_id=version_id)
-
-        return queryset.order_by(self.ordering[0])
+        # Return only top-level pages ordered by position
+        return queryset.filter(parent__isnull=True).order_by("position")
 
     def get(self, request, *args, **kwargs):
         # Get the queryset first
@@ -112,6 +114,12 @@ class KnowledgeBaseView(LoginRequiredMixin, OrganizationPermissionMixin, ListVie
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             try:
                 data = json.loads(request.body)
+
+                # Handle page reordering if that's the request type
+                if data.get("action") == "reorder":
+                    return self.handle_reorder(request, data)
+
+                # Existing page creation logic
                 content = data.get("content", "").strip()
                 title, formatted_content = extract_title_and_content(content)
 
@@ -158,6 +166,34 @@ class KnowledgeBaseView(LoginRequiredMixin, OrganizationPermissionMixin, ListVie
                 )
 
         return super().post(request, *args, **kwargs)  # type: ignore
+
+    @transaction.atomic
+    def handle_reorder(self, request, data):
+        try:
+            page_id = data.get("page_id")
+            new_parent_id = data.get("parent_id")
+            new_position = data.get("position", 0)
+            old_parent_id = data.get("old_parent_id")
+
+            print(
+                f"Handling reorder: page_id={page_id}, new_parent_id={new_parent_id}, new_position={new_position}, old_parent_id={old_parent_id}"
+            )
+
+            page = Page.objects.get(id=page_id, organization=self.organization)
+            page.parent_id = new_parent_id  # type: ignore
+            page.position = new_position
+            page.save()
+
+            # Reorder siblings in new and old parent containers
+            Page.reorder_positions(parent_id=new_parent_id)
+            if old_parent_id != new_parent_id:
+                Page.reorder_positions(parent_id=old_parent_id)
+
+            return JsonResponse({"status": "success", "message": "Page reordered"})
+
+        except Exception as e:
+            logger.exception("Reorder failed")
+            return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

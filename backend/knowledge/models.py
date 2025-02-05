@@ -58,7 +58,14 @@ class Page(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     is_published = models.BooleanField(default=False)
 
-    # Optional: Add parent-child relationship for nested pages
+    # Add position field for ordering
+    position = models.PositiveIntegerField(
+        default=0,
+        db_index=True,
+        help_text=_("Position of the page within its parent level"),
+    )
+
+    # Existing parent field
     parent = models.ForeignKey(
         "self",
         null=True,
@@ -70,11 +77,24 @@ class Page(models.Model):
     objects = PageManager()
 
     class Meta:
-        ordering = ["-updated_at"]
+        ordering = ["parent__id", "position", "-updated_at"]
         verbose_name = "Page"
         verbose_name_plural = "Pages"
 
     def save(self, *args, **kwargs):
+        if not self.position and self.parent:
+            # If no position specified, put it at the end of its parent's children
+            last_sibling = (
+                Page.objects.filter(parent=self.parent).order_by("-position").first()
+            )
+            self.position = (last_sibling.position + 1) if last_sibling else 0
+        elif not self.position:
+            # If no parent, put it at the end of root level pages
+            last_root = (
+                Page.objects.filter(parent__isnull=True).order_by("-position").first()
+            )
+            self.position = (last_root.position + 1) if last_root else 0
+
         # Check if this is an update and content changed
         if self.pk:
             old_page = Page.objects.get(pk=self.pk)
@@ -158,6 +178,21 @@ class Page(models.Model):
             int: Number of words in the content
         """
         return len(self.content.split())
+
+    @classmethod
+    def reorder_positions(cls, parent_id=None):
+        """
+        Reorders all pages at a given level (parent) to have consecutive positions.
+        This ensures there are no gaps in positions after deletions or moves.
+
+        Args:
+            parent_id: The ID of the parent page, or None for root level pages
+        """
+        pages = cls.objects.filter(parent_id=parent_id).order_by("position")
+        for index, page in enumerate(pages):
+            if page.position != index:
+                page.position = index
+                page.save(update_fields=["position"])
 
 
 class ContentType(models.TextChoices):
