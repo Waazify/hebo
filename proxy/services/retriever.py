@@ -5,12 +5,17 @@ from typing import List
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
 from .ai.conversations import execute_condense
-from .ai.embeddings.voyage import get_multimodal_embeddings
+from .ai.embeddings.voyage import VoyageClient
+
+# TODO: Add support for other embeddings providers
+# TODO: provide a similar interface for other embeddings and chat models
+from .ai.chat_models.bedrock import get_bedrock_client
 from db.vectorstore import VectorStore
 from exceptions import EmbeddingError, RetrievalError
 from schemas.ai import Session
 from schemas.agent_settings import AgentSetting
 from schemas.knowledge import ContentType
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,14 +27,38 @@ class Retriever:
     ):
         self.vector_store = vector_store
         self.agent_settings = agent_settings
-    
-
+        # TODO: Add support for other embeddings providers
+        self.embeddings_client = VoyageClient(
+            agent_settings.embeddings.api_key
+            if agent_settings.embeddings
+            and agent_settings.embeddings.api_key
+            else ""
+        )
+        self.condense_client = get_bedrock_client(
+            (
+                agent_settings.condense_llm.aws_access_key_id
+                if agent_settings.condense_llm
+                and agent_settings.condense_llm.aws_access_key_id
+                else ""
+            ),
+            (
+                agent_settings.condense_llm.aws_secret_access_key
+                if agent_settings.condense_llm
+                and agent_settings.condense_llm.aws_secret_access_key
+                else ""
+            ),
+            (
+                agent_settings.condense_llm.aws_region
+                if agent_settings.condense_llm
+                and agent_settings.condense_llm.aws_region
+                else ""
+            ),
+        )
 
     async def get_relevant_sources(
         self,
         messages: List[AIMessage | BaseMessage | HumanMessage | ToolMessage],
         session: Session,
-        agent_settings: AgentSetting,
     ):
         """Get relevant sources based on conversation messages.
 
@@ -52,14 +81,16 @@ class Retriever:
             if not filtered_messages:
                 return ""
 
-            query = self._reduce_to_query(filtered_messages, session, agent_settings)
+            query = self._reduce_to_query(
+                filtered_messages, session, self.agent_settings
+            )
             if not query:
                 logger.warning("Query condensation returned empty result")
                 return ""
 
             # Get embeddings for the query
             try:
-                response = get_multimodal_embeddings(
+                response = self.embeddings_client.get_multimodal_embeddings(
                     inputs=[[query]],
                     input_type="query",
                     session=session,
@@ -141,7 +172,7 @@ class Retriever:
             RetrievalError: If query condensation fails
         """
         try:
-            return execute_condense(self.llm_client, messages, session, agent_settings)
+            return execute_condense(self.condense_client, messages, session, agent_settings)
         except Exception as e:
             logger.error("Query condensation failed: %s", str(e))
             raise RetrievalError(f"Query condensation failed: {str(e)}")

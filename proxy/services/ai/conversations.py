@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Generator, List, Optional, Union
+from typing import Generator, List, Optional, Union
 
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import (
@@ -18,6 +18,7 @@ from schemas.ai import Session
 from schemas.agent_settings import AgentSetting, Tool
 from services.exceptions import ColleagueHandoffException
 
+from .chat_models.bedrock import get_bedrock_client
 from .langfuse_utils import get_langfuse_config
 from .prompts.condense import get_condense_prompt
 from .prompts.system import get_system_prompt
@@ -29,39 +30,48 @@ logger = logging.getLogger(__name__)
 
 
 def execute_conversation(
-    client: Any | Runnable[LanguageModelInput, BaseMessage],
+    agent_settings_or_llm: AgentSetting | Runnable[LanguageModelInput, BaseMessage],
     conversation: List[
         AIMessage | BaseMessage | HumanMessage | SystemMessage | ToolMessage
     ],
     session: Session,
-    agent_settings: AgentSetting,
-    tools: List[Tool] | None = None,
-    context: Optional[str] = None,
+    behaviour: str,
+    context: str,
+    tools: Optional[List[Tool]] = None,
     recursion_depth: int = 0,
-) -> Generator[
-    AIMessage | BaseMessage | HumanMessage | SystemMessage | ToolMessage, None, None
-]:
+) -> Generator[AIMessage | BaseMessage | ToolMessage, None, None]:
     """Execute a conversation with the LLM and yield messages to be returned."""
+
+    agent_settings = (
+        agent_settings_or_llm
+        if isinstance(agent_settings_or_llm, AgentSetting)
+        else None
+    )
+    llm = agent_settings_or_llm if isinstance(agent_settings_or_llm, Runnable) else None
+    tools = (
+        tools
+        if isinstance(tools, List)
+        else agent_settings.tools if agent_settings else None
+    )
 
     logger.debug(f"Executing conversation. Recursion depth: {recursion_depth}")
 
     if recursion_depth >= MAX_RECURSION_DEPTH:
         logger.warning(f"Max recursion depth reached: {recursion_depth}")
         raise ColleagueHandoffException(
-            "Gato ran out of time. Please, take over the conversation."
+            "Agent ran out of time. Please, take over the conversation."
         )
 
     langfuse_config = get_langfuse_config("conversation", session)
 
     def get_llm(
-        client: Any | Runnable[LanguageModelInput, BaseMessage]
+        client,
+        model_name: str,
     ) -> Runnable[LanguageModelInput, BaseMessage]:
         """Initialize the LLM, bind tools to it, and return the instance."""
         logger.debug("Getting LLM instance")
-        if isinstance(client, Runnable):
-            return client
 
-        llm = init_llm(client, agent_settings.core_llm)
+        llm = init_llm(client, model_name)
         # TODO: Add support for user defined tools
         return llm.bind_tools(
             [
@@ -70,25 +80,44 @@ def execute_conversation(
         )
 
     if recursion_depth == 0:
-        for i, msg in enumerate(conversation):
-            if isinstance(msg, HumanMessage):
-                original_content = msg.content
-                if isinstance(original_content, list):
-                    original_content.insert(
-                        0, {"text": "(first message)", "type": "text"}
-                    )
-                    conversation[i] = HumanMessage(content=original_content)
-                else:
-                    conversation[i] = HumanMessage(
-                        content=f"(first message) {original_content}"
-                    )
-                break
 
         conversation = [
-            SystemMessage(content=get_system_prompt(context))
+            SystemMessage(content=get_system_prompt(context, behaviour))
         ] + conversation
 
-    llm = get_llm(client)
+    if not llm and agent_settings:
+        conversation_client = get_bedrock_client(
+            (
+                agent_settings.core_llm.aws_access_key_id
+                if agent_settings
+                and agent_settings.core_llm
+                and agent_settings.core_llm.aws_access_key_id
+                else ""
+            ),
+            (
+                agent_settings.core_llm.aws_secret_access_key
+                if agent_settings
+                and agent_settings.core_llm
+                and agent_settings.core_llm.aws_secret_access_key
+                else ""
+            ),
+            (
+                agent_settings.core_llm.aws_region
+                if agent_settings
+                and agent_settings.core_llm
+                and agent_settings.core_llm.aws_region
+                else ""
+            ),
+        )
+
+        model_name = agent_settings.core_llm.name if agent_settings.core_llm else None
+        if not model_name:
+            raise ValueError("Model name not found")
+
+        llm = get_llm(conversation_client, model_name)
+
+    if not llm:
+        raise ValueError("LLM not found")
 
     try:
         logger.info("Invoking Conversation LLM...")
@@ -99,36 +128,28 @@ def execute_conversation(
     except Exception as e:
         logger.error(f"Error invoking LLM: {e}")
         raise
-    # we retry because Bedrock sometimes returns empty response content
+    # we retry because LLMs sometimes return empty response content
     if not response.content:
         logger.warning("LLM response content is empty. Retrying...")
         yield from execute_conversation(
             llm,
             conversation,
             session,
-            agent_settings,
-            tools,
+            behaviour,
             context,
+            tools,
             recursion_depth + 1,
         )
         return
 
+    if isinstance(response.content, str):
+        response.content = [{"type": "text", "text": response.content}]
     logger.debug(f"Conversation LLM response: {response}")
     conversation.append(response)
     yield response
 
     if isinstance(response, AIMessage) and response.tool_calls:
         logger.debug(f"Processing {len(response.tool_calls)} tool calls")
-        for tool_call in response.tool_calls:
-            # Create dummy tool messages to be used in the next step that will eventually keep the
-            # chat history consistent even though the run expires.
-            tool_message = ToolMessage(
-                content=f"Tool ({tool_call['name']}): Execution has been aborted. Please, invoke the tool again if still required.",
-                tool_call_id=tool_call["id"],
-            )
-            conversation.append(tool_message)
-            yield tool_message
-
         for tool_call in response.tool_calls:
             logger.info(f"Invoking tool: {tool_call}")
             try:
@@ -139,14 +160,19 @@ def execute_conversation(
                 logger.warning(f"Error invoking tool {tool_call['name']}: {e}")
                 response_text = f"Tool ({tool_call['name']}): Error invoking tool: {e}"
 
-            # Find and replace the dummy tool message with the same tool_call_id
-            for i, msg in enumerate(conversation):
-                if isinstance(msg, ToolMessage) and msg.tool_call_id == tool_call["id"]:
-                    conversation[i] = ToolMessage(
-                        content=response_text, tool_call_id=tool_call["id"]
-                    )
-                    yield conversation[i]
-                    break
+            tool_message_content = [
+                {
+                    "type": "text",
+                    "text": response_text,
+                }
+            ]
+
+            tool_message = ToolMessage(
+                content=tool_message_content,  # type: ignore
+                tool_call_id=tool_call["id"],
+            )
+            conversation.append(tool_message)
+            yield tool_message
 
         # Recursive call
         logger.debug(f"Making recursive call. Current depth: {recursion_depth}")
@@ -154,9 +180,9 @@ def execute_conversation(
             llm,
             conversation,
             session,
-            agent_settings,
-            tools,
+            behaviour,
             context,
+            tools,
             recursion_depth + 1,
         )
 

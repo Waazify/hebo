@@ -5,9 +5,6 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
-
-
-
 class Thread(BaseModel):
     id: Optional[int] = None
     organization_id: str
@@ -32,16 +29,27 @@ class MessageContent(BaseModel):
     type: MessageContentType
     text: Optional[str] = None
     image_url: Optional[str] = None
-    tool_use: Optional[str] = None
     image_encoding: Optional[str] = None
+    # for tool use
+    name: Optional[str] = None
+    input: Optional[dict] = None
+    id: Optional[str] = None
 
 
 class MessageType(Enum):
     AI = "ai"
     HUMAN = "human"
     HUMAN_AGENT = "human_agent"
-    TOOL = "tool"
+    TOOL_ANSWER = "tool"
     COMMENT = "comment"
+
+
+class RunStatus(Enum):
+    CREATED = "created"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    ERROR = "error"
+    EXPIRED = "expired"
 
 
 class BaseMessage(BaseModel):
@@ -63,6 +71,8 @@ class BaseMessage(BaseModel):
 class Message(BaseMessage):
     thread_id: int
     created_at: datetime
+    run_status: Optional[RunStatus] = None
+    tool_call_id: Optional[str] = None
 
     class Config:
         orm_mode = True
@@ -101,14 +111,6 @@ class AddMessageRequest(BaseMessage): ...
 class AddMessageResponse(BaseMessage): ...
 
 
-class RunStatus(Enum):
-    CREATED = "created"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    ERROR = "error"
-    EXPIRED = "expired"
-
-
 class Run(BaseModel):
     version_id: str
     thread_id: int
@@ -125,3 +127,4 @@ class RunResponse(BaseModel):
     version_id: str
     status: RunStatus
     message: Optional[BaseMessage] = None
+    should_send: bool = False

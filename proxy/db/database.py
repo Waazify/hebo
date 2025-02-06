@@ -3,12 +3,11 @@ import logging
 import sys
 from datetime import datetime
 from functools import wraps
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import asyncpg
 
-from schemas.agent_settings import AgentSetting, Tool
-from schemas.knowledge import Part
+from schemas.agent_settings import AgentSetting, LLMAdapter, Tool
 from schemas.threads import Message, Run, Thread
 
 logger = logging.getLogger(__name__)
@@ -106,17 +105,21 @@ class DB:
         return "DELETE 1" in result
 
     @db_operation
-    async def get_thread_messages(
+    async def get_valid_thread_messages(
         self, thread_id: int, organization_id: str
-    ) -> List[Message]:
+    ) -> Optional[List[Message]]:
         """Get all messages in a thread"""
         query = """
-            SELECT id, thread_id, created_at, message_type, content
+            SELECT thread_id, created_at, message_type, content
             FROM threads_message
             WHERE thread_id = $1 and organization_id = $2
+            AND run_status not in ('error', 'expired')
             ORDER BY created_at ASC
         """
         rows = await self.conn.fetch(query, thread_id, organization_id)
+        if not rows:
+            return None
+
         return [
             Message(
                 thread_id=row["thread_id"],
@@ -130,12 +133,12 @@ class DB:
     @db_operation
     async def get_agent_settings(
         self, version_id: str, organization_id: str
-    ) -> Optional[Dict]:
+    ) -> Optional[AgentSetting]:
         """Get agent settings and tools for a version"""
         # First get agent settings
         settings_query = """
-            SELECT organization_id, version_id, core_llm, condense_llm,
-                   embeddings, delay, hide_tool_messages
+            SELECT id, organization_id, version_id, delay, hide_tool_messages,
+                   core_llm_id, condense_llm_id, vision_llm_id, embeddings_id
             FROM agent_settings_agentsetting
             WHERE version_id = $1 and organization_id = $2
         """
@@ -146,39 +149,86 @@ class DB:
         if not settings_row:
             return None
 
-        # Then get associated tools
+        # Get tools
         tools_query = """
-            SELECT name, description, output_template, tool_type,
-                   openapi_url, auth_token, db_connection_string, query
+            SELECT id, agent_setting_id, name, description, output_template,
+                   tool_type, openapi_url, auth_token, db_connection_string, query
             FROM agent_settings_tool
             WHERE agent_setting_id = $1
         """
         tools_rows = await self.conn.fetch(tools_query, settings_row["id"])
 
-        # Construct response
-        settings = AgentSetting(**dict(settings_row))
+        # Get LLM adapters
+        adapters_query = """
+            SELECT id, is_default, organization_id, model_type, provider,
+                   api_base, name, aws_region, api_key, aws_access_key_id, aws_secret_access_key
+            FROM agent_settings_llmadapter
+            WHERE id = ANY($1::int[])
+        """
+        adapter_ids = [
+            settings_row["core_llm_id"],
+            settings_row["condense_llm_id"],
+            settings_row["vision_llm_id"],
+            settings_row["embeddings_id"],
+        ]
+        adapters_rows = await self.conn.fetch(adapters_query, adapter_ids)
+
+        # Convert rows to objects
+        adapters_dict = {
+            row["id"]: LLMAdapter(**dict(row)) for row in adapters_rows
+        }
+
         tools = [Tool(**dict(row)) for row in tools_rows]
 
-        return {"settings": settings, "tools": tools}
+        # Construct AgentSetting object
+        return AgentSetting(
+            id=settings_row["id"],
+            organization_id=settings_row["organization_id"],
+            version_id=settings_row["version_id"],
+            core_llm=adapters_dict.get(settings_row["core_llm_id"]),
+            condense_llm=adapters_dict.get(settings_row["condense_llm_id"]),
+            vision_llm=adapters_dict.get(settings_row["vision_llm_id"]),
+            embeddings=adapters_dict.get(settings_row["embeddings_id"]),
+            delay=settings_row["delay"],
+            hide_tool_messages=settings_row["hide_tool_messages"],
+            tools=tools
+        )
 
     @db_operation
-    async def get_behaviour_parts(
-        self, version_id: int, organization_id: str
-    ) -> List[Part]:
-        """Get all behaviour parts for a version"""
+    async def get_behaviour_part_ids(
+        self, version_id: str, organization_id: str
+    ) -> List[int]:
+        """Get all behaviour part ids for a version, ordered by page hierarchy and part position"""
         query = """
-            SELECT p.id, p.page_id, p.start_line, p.end_line,
-                   p.content_hash, p.type, p.identifier,
-                   p.is_handover, p.created_at, p.updated_at, p.is_valid
+            WITH RECURSIVE page_hierarchy AS (
+                -- Get root level pages
+                SELECT id, parent_id, position,
+                       ARRAY[position] as path
+                FROM knowledge_page
+                WHERE parent_id IS NULL
+                  AND version_id = $1
+                  AND organization_id = $2
+
+                UNION ALL
+
+                -- Get child pages
+                SELECT c.id, c.parent_id, c.position,
+                       ph.path || c.position as path
+                FROM knowledge_page c
+                JOIN page_hierarchy ph ON c.parent_id = ph.id
+            )
+            SELECT p.id
             FROM knowledge_part p
             JOIN knowledge_page pg ON p.page_id = pg.id
-            WHERE pg.version_id = $1 and pg.organization_id = $2
+            JOIN page_hierarchy ph ON pg.id = ph.id
+            WHERE pg.version_id = $1
+              AND pg.organization_id = $2
               AND p.type = 'behaviour'
               AND p.is_valid = true
-            ORDER BY pg.id, p.start_line
+            ORDER BY ph.path, p.start_line
         """
         rows = await self.conn.fetch(query, version_id, organization_id)
-        return [Part(**dict(row)) for row in rows]
+        return [row["id"] for row in rows]
 
     @db_operation
     async def create_run(self, run: Run) -> int:
@@ -190,11 +240,7 @@ class DB:
             RETURNING id
         """
         run_id = await self.conn.fetchval(
-            query,
-            run.thread_id,
-            run.version_id,
-            run.status,
-            run.created_at
+            query, run.thread_id, run.version_id, run.status, run.created_at
         )
         if run_id is None:
             raise ValueError("Failed to create run")
@@ -211,6 +257,13 @@ class DB:
         """
         row = await self.conn.fetchrow(query, run_id, organization_id)
         return Run(**row) if row else None
+
+    @db_operation
+    async def update_run_status(self, run_id: int, status: str) -> bool:
+        """Update the status of a run"""
+        query = "UPDATE threads_run SET status = $1 WHERE id = $2"
+        result = await self.conn.execute(query, status, run_id)
+        return "UPDATE 1" in result
 
 
 async def wait_for_database_connection(db_conn):

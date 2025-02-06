@@ -1,23 +1,42 @@
-from typing import Optional
+from enum import Enum
+from typing import Optional, List
 
 from pydantic import BaseModel, Field, HttpUrl
 
 
-class AgentSetting(BaseModel):
-    organization_id: int
-    version_id: int
-    core_llm: str = Field(max_length=20)
-    condense_llm: str = Field(max_length=20)
-    vision_llm: Optional[str] = Field(default=None, max_length=20)
-    embeddings: str = Field(max_length=20)
-    delay: bool = False
-    hide_tool_messages: bool = False
+class ModelType(str, Enum):
+    CHAT = "chat"
+    EMBEDDING = "embedding"
+
+
+class ProviderType(str, Enum):
+    ANTHROPIC = "anthropic"
+    OPENAI = "openai"
+    AZURE = "azure"
+    BEDROCK = "bedrock"
+    VERTEX = "vertex-ai"
+    VOYAGE = "voyage"
+
+
+class LLMAdapter(BaseModel):
+    id: int
+    is_default: bool
+    organization_id: Optional[int] = None
+    model_type: ModelType
+    provider: ProviderType
+    api_base: Optional[str] = None
+    name: str = Field(max_length=100)
+    aws_region: Optional[str] = Field(default=None, max_length=50)
+    api_key: Optional[str] = Field(default=None, max_length=2000)
+    aws_access_key_id: Optional[str] = Field(default=None, max_length=255)
+    aws_secret_access_key: Optional[str] = Field(default=None, max_length=255)
 
     class Config:
         orm_mode = True
 
 
 class Tool(BaseModel):
+    id: int
     agent_setting_id: int
     name: str = Field(max_length=200)
     description: str
@@ -27,6 +46,22 @@ class Tool(BaseModel):
     auth_token: Optional[str] = Field(default=None, max_length=255)
     db_connection_string: Optional[str] = Field(default=None, max_length=255)
     query: Optional[str] = None
+
+    class Config:
+        orm_mode = True
+
+
+class AgentSetting(BaseModel):
+    id: int
+    organization_id: int
+    version_id: int
+    core_llm: Optional[LLMAdapter] = None
+    condense_llm: Optional[LLMAdapter] = None
+    vision_llm: Optional[LLMAdapter] = None
+    embeddings: Optional[LLMAdapter] = None
+    delay: bool = False
+    hide_tool_messages: bool = False
+    tools: List[Tool] = []
 
     class Config:
         orm_mode = True

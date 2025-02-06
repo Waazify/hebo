@@ -1,9 +1,11 @@
 import asyncio
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List
 
+import asyncpg
 from fastapi import HTTPException
 from langchain_core.messages import (
     AIMessage,
@@ -29,11 +31,12 @@ from schemas.threads import (
     RunStatus,
     Thread,
 )
-from utils import generate_id
+from db.vectorstore import VectorStore
 from .ai.conversations import execute_conversation
 from .ai.vision import get_content_from_human_message
 from .exceptions import ColleagueHandoffException
 from .retriever import Retriever
+
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +44,10 @@ logger = logging.getLogger(__name__)
 class ThreadManager:
     def __init__(
         self,
-        db: DB,
-        retriever: Optional[Retriever],
+        conn: asyncpg.Connection,
     ):
-        self.db: DB = db
-        self.retriever: Optional[Retriever] = retriever
+        self.db: DB = DB(conn)
+        self.vectorstore: VectorStore = VectorStore(conn)
 
     async def create_thread(
         self, request: CreateThreadRequest, organization_id: str
@@ -113,6 +115,15 @@ class ThreadManager:
             logger.info("thread %s not found", thread_id)
             raise HTTPException(status_code=404, detail="Thread not found")
         try:
+            # Init the retriever
+            agent_settings = await self.db.get_agent_settings(
+                run_request.version_id, organization_id
+            )
+            if not agent_settings:
+                raise HTTPException(status_code=404, detail="Agent settings not found")
+            retriever = Retriever(
+                vector_store=self.vectorstore, agent_settings=agent_settings
+            )
             # Create the run
             run = Run(
                 version_id=run_request.version_id,
@@ -128,7 +139,11 @@ class ThreadManager:
             )
             yield f"data: {run_response.model_dump_json()}\n\n"
 
-            messages = await self.db.get_thread_messages(thread_id, organization_id)
+            messages = await self.db.get_valid_thread_messages(
+                thread_id, organization_id
+            )
+            # TODO: refactor the following: we can reduce code duplication here.
+            # TODO: Hint: raise colleague handoff exception if the last message is not human.
             if not messages or messages[-1].message_type != MessageType.HUMAN:
                 run_response = RunResponse(
                     version_id=run_request.version_id,
@@ -143,6 +158,7 @@ class ThreadManager:
                         ],
                     ),
                 )
+                await self.db.update_run_status(run_id, RunStatus.ERROR.value)
                 yield f"data: {run_response.model_dump_json()}\n\n"
                 message = Message(
                     message_type=MessageType.COMMENT,
@@ -154,6 +170,7 @@ class ThreadManager:
                     ],
                     created_at=datetime.now(),
                     thread_id=thread.id,
+                    run_status=RunStatus.ERROR,
                 )
                 await self._add_message(message)
                 return
@@ -162,19 +179,17 @@ class ThreadManager:
             # This is more art than science. We should think about a more robust solution in the future. (And patent it eventually)
             # The solution should handle cases where users are sending multi-part messages. A more sophisticated solution for the traffic light is needed.
             await asyncio.sleep(8 if settings.TARGET_ENV == "production" else 1)
-            run = await self.db.get_run(run_id, organization_id)
-            if not run:
-                raise Exception("Run not found")
-            if run.status != RunStatus.CREATED:
+            run_status = await self._get_run_status(run_id, organization_id)
+            if run_status != RunStatus.CREATED:
                 run_response = RunResponse(
                     version_id=run_request.version_id,
-                    status=run.status,
+                    status=run_status,
                 )
                 yield f"data: {run_response.model_dump_json()}\n\n"
                 logger.info("Run %s is not in CREATED status", run_id)
 
             # Merge messages
-            conversation_messages = self._merge_conversation_messages(messages)
+            conversation_messages = self._merge_sanitize_messages(messages)
             llm_conversation: List[
                 AIMessage | LangchainBaseMessage | HumanMessage | ToolMessage
             ] = []
@@ -196,160 +211,179 @@ class ThreadManager:
                 organization_id=organization_id,
             )
 
-            agent_settings = await self.db.get_agent_settings(
+            # Retrieve relevant context
+            context = await retriever.get_relevant_sources(llm_conversation, session)
+            behaviour_part_ids = await self.db.get_behaviour_part_ids(
                 run_request.version_id, organization_id
             )
-
-            # Retrieve relevant context
-            context = await self.retriever.get_relevant_sources(
-                llm_conversation, session
-            )
+            behaviour_parts = []
+            for id in behaviour_part_ids:
+                part = await self.vectorstore.find_by_id(id)
+                if part:
+                    behaviour_parts.append(part)
+            behaviour_parts = "\n\n".join([part.content for part in behaviour_parts])
 
             logger.info("conversation has %s messages", len(llm_conversation))
             logger.info("process conversation with LLM")
             logger.debug(
                 "Responding to message: %s",
-                conversation_messages[-1].content["object"]["content"],
+                conversation_messages[-1].content,
             )
 
+            # TODO: retrieve past conversation summaries
+
             reply_messages = []
-            any_part_sent = False
             for reply in execute_conversation(
+                agent_settings_or_llm=agent_settings,
                 conversation=llm_conversation,
+                behaviour=behaviour_parts,
                 context=context,
-                client=self.bedrock_client,
                 session=session,
             ):
-                # This ensures that a chunk of replies are saved in the database with very close timestamps
-                # It is in place to reduce the risk that a user message is inserted between an AI message with tool use and the subsequent tool reply
-                # The solution is far from perfect but should work for now
-                # TODO: Implement a more robust solution to handle this
-                first_created_at += timedelta(microseconds=1)
+                # Replies from execute_conversation are of type AiMessage or ToolMessage
+                # AiMessages may contain tool calls, ToolMessages are 1 single text message
+                message_type = (
+                    MessageType.AI
+                    if isinstance(reply, AIMessage)
+                    else MessageType.TOOL_ANSWER
+                )
+                message_content = []
+                for content in reply.content:
+                    if isinstance(content, dict):
+                        message_content_type = (
+                            MessageContentType.TEXT
+                            if content.get("type", "") == "text"
+                            else MessageContentType.TOOL_USE
+                        )
+                        if message_content_type == MessageContentType.TOOL_USE:
+                            message_content.append(
+                                MessageContent(
+                                    type=message_content_type,
+                                    name=content.get("name", ""),
+                                    input=content.get("input", {}),
+                                    id=content.get("id", ""),
+                                )
+                            )
+                        else:
+                            message_content.append(
+                                MessageContent(
+                                    type=message_content_type,
+                                    text=content.get("text", ""),
+                                )
+                            )
+                    else:
+                        message_content.append(
+                            MessageContent(
+                                type=MessageContentType.TEXT,
+                                text=content,
+                            )
+                        )
 
                 reply = Message(
-                    id=generate_id(),  # ID will be changed when reply is sent
-                    content={
-                        "object": reply.model_dump(
-                            exclude=set(["usage_metadata", "response_metadata"]),
-                            exclude_none=True,
-                        ),
-                        "type": "object",
-                    },
-                    conversation_id=conversation.id,
-                    sender_id=settings.GATO_RESPOND_USER_ID,
-                    created_at=first_created_at,
-                    message_type="ai" if isinstance(reply, AIMessage) else "tool",
-                    receiver_id=conversation.contact_id,
+                    message_type=message_type,
+                    content=message_content,
+                    thread_id=thread.id,
+                    created_at=datetime.now(),
                 )
-                original_content = reply.content
-                reply_messages.append(reply)
 
-                if self._should_send_message(reply_messages, llm_conversation):
-                    message_parts = self._split_message(reply.content["object"])
-                    for i, part in enumerate(message_parts):
-                        if (
-                            ("call colleague_handoff tool" not in part["text"])
-                            and ("call check_availability tool" not in part["text"])
-                            and ("call check_instalment_plans tool" not in part["text"])
-                            and (
-                                "call check_sale_or_trade_in_value tool"
-                                not in part["text"]
-                            )
-                            and ("call find_closest_store tool" not in part["text"])
-                        ):
+                reply_messages.append(reply)
+                run_status = await self._get_run_status(run_id, organization_id)
+                should_send = self._should_send_message(
+                    reply_messages,
+                    llm_conversation,
+                    run_status,
+                    agent_settings.hide_tool_messages,
+                )
+
+                message_parts = self._split_message(reply.content)
+                for i, part in enumerate(message_parts):
+                    if part.text:
+                        if not re.search(r"call \w+ tool", part.text):
                             # Calculate delay based on word count and reading speed
-                            word_count = len(part["text"].split())
+                            word_count = len(part.text.split())
                             # Convert WPM to seconds
                             delay = (word_count / 100) * 60
                             # Add a delay of -15 seconds for the first part to account for the system latency
                             delay -= 15 if i == 0 else 0
                             await asyncio.sleep(
-                                max(0, delay)
-                                if settings.TARGET_ENV == "production"
-                                else 1
+                                max(0, delay) if agent_settings.delay else 0
                             )
 
-                            # Only check for new messages if we're not in the middle of sending a multi-part message
-                            if not any_part_sent:
-                                current_last_message_id = (
-                                    await self.db.get_last_human_message_id(
-                                        conversation.id
-                                    )
-                                )
-                                if (
-                                    current_last_message_id
-                                    and current_last_message_id != last_human_message_id
-                                ):
-                                    logger.info(
-                                        "New human message detected, skipping AI response",
-                                    )
-                                    break
-
-                            reply.content = part
                             if (
-                                await self.db.get_conversation_assignee_id(
-                                    conversation.id
-                                )
-                                != settings.GATO_RESPOND_USER_ID
+                                await self._get_run_status(run_id, organization_id)
+                                == RunStatus.CREATED
                             ):
-                                logger.info(
-                                    "Detected change of assignee. Skipping AI response.",
+                                await self.db.update_run_status(
+                                    run_id, RunStatus.RUNNING.value
                                 )
-                                return
-                            logger.info("send message to user")
-                            await self.db.update_conversation_status(
-                                conversation.id, "writing"
+                                run_response = RunResponse(
+                                    version_id=run_request.version_id,
+                                    status=RunStatus.RUNNING,
+                                )
+                                yield f"data: {run_response.model_dump_json()}\n\n"
+
+                            base_message = BaseMessage(
+                                message_type=message_type,
+                                content=[part],
                             )
-                            await self.messenger.send_message(reply)
-                            any_part_sent = True
-                            logger.info("reply %s sent to user", reply.id)
+                            logger.info("send message to user")
+                            run_status = await self._get_run_status(
+                                run_id, organization_id
+                            )
+                            run_response = RunResponse(
+                                version_id=run_request.version_id,
+                                status=run_status,
+                                message=base_message,
+                                should_send=should_send,
+                            )
+                            yield f"data: {run_response.model_dump_json()}\n\n"
+                            message = Message(
+                                message_type=reply.message_type,
+                                content=[part],
+                                created_at=datetime.now(),
+                                thread_id=thread.id,
+                                run_status=run_status,
+                            )
+                            await self._add_message(message)
 
                         else:
-                            reply.content = {
-                                "type": "text",
-                                "text": "Gato is handing over the conversation, please read the conversation history carefully.",
-                            }
-                            await self.messenger.handle_handoff(reply)
-                            logger.warning("Irregular handover from Gato.")
-                            break
+                            logger.warning("Irregular handover from the agent.")
+                            raise ColleagueHandoffException(
+                                "The agent is handing over the conversation, please read the conversation history carefully."
+                            )
+                    if part.type == MessageContentType.TOOL_USE:
+                        run_status = await self._get_run_status(
+                            run_id, organization_id
+                        )
+                        run_response = RunResponse(
+                            version_id=run_request.version_id,
+                            status=run_status,
+                            message=BaseMessage(
+                                message_type=MessageType.AI,
+                                content=[part],
+                            ),
+                            should_send=False,
+                        )
+                        yield f"data: {run_response.model_dump_json()}\n\n"
+                        message = Message(
+                            message_type=MessageType.AI,
+                            content=[part],
+                            created_at=datetime.now(),
+                            thread_id=thread.id,
+                            run_status=run_status,
+                        )
+                        await self._add_message(message)
 
-                elif reply.message_type in ["tool", "error"]:
-                    if (
-                        reply.message_type == "error"
-                        or "colleague handoff" in reply.content["object"]["content"]
-                    ):
-                        if reply.content["type"] == "object":
-                            reply.content = {
-                                "type": "text",
-                                "text": reply.content["object"]["content"],
-                            }
-                        await self.messenger.handle_handoff(reply)
-                    reply = self._format_tool_message(reply)
-
-                # In case the reply was split into multiple messages, we restore the original content
-                # The id used to save the reply in the DB is the last one used to send the message on Respond io
-                reply.content = original_content
-
-            # We only store the entire chunk of replies only if any of its parts has been sent to the user
-            if any_part_sent:
-                for reply in reply_messages:
-                    await self.db.store_message(reply)
-            await self.db.update_conversation_status(conversation.id, "ready")
-
-            if self.evaluation_manager and any_part_sent:
-                # Use the trace_id of the last AI message for evaluation
-                last_ai_message = next(
-                    (
-                        msg
-                        for msg in reversed(reply_messages)
-                        if msg.message_type == "ai"
-                    ),
-                    None,
+            run_status = await self._get_run_status(run_id, organization_id)
+            if run_status in [RunStatus.RUNNING, RunStatus.CREATED]:
+                await self.db.update_run_status(run_id, RunStatus.COMPLETED.value)
+                run_response = RunResponse(
+                    version_id=run_request.version_id,
+                    status=RunStatus.COMPLETED,
                 )
-                if last_ai_message and session.trace_id:
-                    await self.evaluation_manager.request_feedback(
-                        conversation.id, session.trace_id, contact_id
-                    )
+                yield f"data: {run_response.model_dump_json()}\n\n"
+                logger.info("Run %s is completed", run_id)
+
         except Exception as e:
             logger.error("Error running thread: %s", e, exc_info=True)
 
@@ -366,12 +400,13 @@ class ThreadManager:
                             text=(
                                 e.message
                                 if isinstance(e, ColleagueHandoffException)
-                                else "Something went wrong. Please, take over the conversation."
+                                else f"Something went wrong. Please, take over the conversation: {e}"
                             ),
                         )
                     ],
                 ),
             )
+            await self.db.update_run_status(run_id, RunStatus.ERROR.value)
             yield f"data: {run_response.model_dump_json()}\n\n"
             message = Message(
                 message_type=MessageType.COMMENT,
@@ -381,83 +416,125 @@ class ThreadManager:
                         text=(
                             e.message
                             if isinstance(e, ColleagueHandoffException)
-                            else "Something went wrong. Please, take over the conversation."
+                            else f"Something went wrong. Please, take over the conversation: {e}"
                         ),
                     )
                 ],
                 created_at=datetime.now(),
                 thread_id=thread.id,
+                run_status=RunStatus.ERROR,
             )
             await self._add_message(message)
             return
 
+    async def _get_run_status(self, run_id: int, organization_id: str) -> RunStatus:
+        run = await self.db.get_run(run_id, organization_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Run not found")
+        return run.status
+
     @staticmethod
     def _should_send_message(
-        replies: List[Message], conversation_messages: List[BaseMessage]
+        replies: List[Message],
+        conversation_messages: List[
+            AIMessage | LangchainBaseMessage | HumanMessage | ToolMessage
+        ],
+        run_status: RunStatus,
+        hide_tool_messages: bool = False,
     ) -> bool:
-        # We do not return messages in case of colleague handoff invokation
-        for reply in replies:
-            if reply.message_type == "ai":
-                content = AIMessage(**reply.content["object"])
-                if hasattr(content, "tool_calls") and content.tool_calls:
-                    if any(
-                        tool_call["name"] == "colleague_handoff"
-                        for tool_call in content.tool_calls
-                    ):
-                        return False
 
-        if replies[-1].message_type == "ai":
-            content = AIMessage(**replies[-1].content["object"])
-            if hasattr(content, "tool_calls") and content.tool_calls:
-                # We don't show the AI message introducing a tool call, unless it's the very first AI message in the conversation
-                if (
-                    len([m for m in conversation_messages if isinstance(m, AIMessage)])
-                    == 0
-                ):
-                    return True
+        if run_status in [RunStatus.ERROR, RunStatus.EXPIRED, RunStatus.COMPLETED]:
+            return False
 
-                # We send Gato's message between two tool calls, unless the tool call is an error
-                if (
-                    len(replies) > 1
-                    and replies[-2].message_type == "tool"
-                    and not (
-                        "error" in replies[-2].content["object"]["content"].lower()
-                        and any(
-                            tool_call["name"]
-                            in str(replies[-2].content["object"]["content"]).lower()
-                            for tool_call in content.tool_calls
-                        )
-                    )
-                ):
-                    return True
-                return False
+        if replies[-1].message_type != MessageType.AI:
+            return False
+
+        # The first message is always sent
+        if len([m for m in conversation_messages if isinstance(m, AIMessage)]) == 0:
             return True
+
+        if not hide_tool_messages:
+            return True
+
+        # We send message between two tool calls, unless the tool call is an error
+        if len(replies) > 1 and replies[-2].message_type == MessageType.TOOL_ANSWER:
+            if "error" not in [
+                c.text.lower() for c in replies[-2].content if c.text is not None
+            ] and any(
+                tool_call.name
+                in [c.text.lower() for c in replies[-2].content if c.text is not None]
+                for tool_call in replies[-1].content
+            ):
+                return True
+
         return False
 
     @staticmethod
-    def _split_message(content: dict) -> List[dict]:
+    def _split_message(content: List[MessageContent]) -> List[MessageContent]:
         response_text = ""
 
-        # Check if the content is a string or a more complex structure
-        if isinstance(content["content"], str):
-            response_text = str(content["content"])
-        else:
-            # If it's not a string, join all text items in the content
-            response_text = str(
-                "\n\n".join(
-                    [
-                        item.get("text", "")
-                        for item in content["content"]
-                        if isinstance(item, dict) and "text" in item
-                    ]
+        response_text = str(
+            "\n\n".join([item.text for item in content if item.text is not None])
+        )
+
+        # Split the response text into parts and format each part as a MessageContent
+        return [
+            MessageContent(type=MessageContentType.TEXT, text=part)
+            for part in response_text.split("\n\n")
+        ] + [c for c in content if c.type == MessageContentType.TOOL_USE]
+
+    def _sanitize_messages(self, messages: List[Message]) -> List[Message]:
+        """This assumes messages have been sorted and merged"""
+        if messages[-1].message_type != MessageType.HUMAN:
+            return self._sanitize_messages(messages[:-1])
+
+        if messages[-2].message_type == MessageType.TOOL_ANSWER:
+            tool_name = f" {messages[-2].content[0].name}"
+            messages[-2].content.append(
+                MessageContent(
+                    type=MessageContentType.TEXT,
+                    text=f"Above is the tool answer{tool_name}. In the meantime, the user has sent the following messages:",
                 )
             )
+            for message_content in messages[-1].content:
+                messages[-2].content.append(message_content)
+            messages[-2].content.append(
+                MessageContent(
+                    type=MessageContentType.TEXT,
+                    text="Please continue the conversation considering the above tool answer and the user's messages.",
+                )
+            )
+            return messages[:-1]
 
-        # Split the response text into parts and format each part as a dictionary
-        return [{"type": "text", "text": part} for part in response_text.split("\n\n")]
+        if messages[-2].message_type == MessageType.AI and any(
+            c.type == MessageContentType.TOOL_USE for c in messages[-2].content
+        ):
+            for content in messages[-2].content:
+                if content.type == MessageContentType.TOOL_USE:
+                    tool_call_id = content.id
+
+                    # Create a tool answer message between the AI tool use and human message
+                    tool_answer_message = Message(
+                        message_type=MessageType.TOOL_ANSWER,
+                        content=[
+                            MessageContent(
+                                type=MessageContentType.TEXT,
+                                text="The tool was called but no response was received. Try again.",
+                            )
+                        ],
+                        created_at=messages[-1].created_at - timedelta(seconds=1),
+                        thread_id=messages[-1].thread_id,
+                        tool_call_id=tool_call_id,
+                    )
+
+                    # Insert the tool answer message between AI and human messages
+                    messages.insert(-1, tool_answer_message)
+            return self._sanitize_messages(messages)
+
+        return messages
 
     @staticmethod
-    def _merge_conversation_messages(messages: List[Message]) -> List[Message]:
+    def _merge_messages(messages: List[Message]) -> List[Message]:
         formatted_messages = []
         previous_message = None
         previous_message_type = None
@@ -520,6 +597,10 @@ class ThreadManager:
 
         return formatted_messages
 
+    def _merge_sanitize_messages(self, messages: List[Message]) -> List[Message]:
+        messages = self._merge_messages(messages)
+        return self._sanitize_messages(messages)
+
     @staticmethod
     def _get_content_type(message_content: MessageContent) -> str:
         return message_content.type.value
@@ -551,7 +632,7 @@ class ThreadManager:
             MessageType.AI: self._format_ai_message,
             MessageType.HUMAN: self._format_human_message,
             MessageType.HUMAN_AGENT: self._format_human_agent_message,
-            MessageType.TOOL: self._format_tool_message,
+            MessageType.TOOL_ANSWER: self._format_tool_message,
             MessageType.COMMENT: self._format_comment_message,
         }
 
@@ -573,11 +654,15 @@ class ThreadManager:
 
     @staticmethod
     async def _format_tool_message(message: Message) -> Message:
-        message.message_type = MessageType.TOOL
+        content = await get_content_from_human_message(message)
+        message.content = content
+        message.message_type = MessageType.TOOL_ANSWER
         return message
 
     @staticmethod
     async def _format_comment_message(message: Message) -> Message:
+        content = await get_content_from_human_message(message)
+        message.content = content
         message.message_type = MessageType.COMMENT
         return message
 
