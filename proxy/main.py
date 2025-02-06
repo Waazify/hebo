@@ -154,15 +154,6 @@ async def close_thread(thread_id: int, req: Request):
         )
 
 
-@app.get("/threads/{thread_id}")
-async def get_thread(request: Request, thread_id: int):
-    organization = request.state.organization
-    return {
-        "message": "Welcome to Hebo Messaging Service",
-        "organization": organization,
-    }
-
-
 @app.post("/threads/{thread_id}/messages", response_model=AddMessageResponse)
 async def add_message(request: AddMessageRequest, req: Request, thread_id: int):
     organization = req.state.organization

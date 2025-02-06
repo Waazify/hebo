@@ -62,15 +62,15 @@ class DB:
     ) -> Optional[Thread]:
         """Get a thread by its ID"""
         query = "SELECT * FROM threads_thread WHERE id = $1 and organization_id = $2"
-        return await self.conn.fetchrow(query, thread_id, organization_id)
-
+        row = await self.conn.fetchrow(query, thread_id, organization_id)
+        return Thread(**row) if row else None
     @db_operation
     async def close_thread(self, thread_id: int, organization_id: str) -> bool:
         """Close a thread"""
         query = """
             UPDATE threads_thread
             SET is_open = false
-            WHERE id = $2 and organization_id = $3
+            WHERE id = $1 and organization_id = $2
         """
         result = await self.conn.execute(query, thread_id, organization_id)
         return "UPDATE 1" in result
