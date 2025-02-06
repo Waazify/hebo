@@ -253,6 +253,44 @@ class Thread(models.Model):
         return f"{adjective} {noun}"
 
 
+class RunManager(OrganizationManagerMixin, models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().select_related("thread__organization")
+
+
+class Run(models.Model):
+    class RunStatus(models.TextChoices):
+        CREATED = "created", _("Created")
+        RUNNING = "running", _("Running")
+        COMPLETED = "completed", _("Completed")
+        ERROR = "error", _("Error")
+        EXPIRED = "expired", _("Expired")
+
+    version = models.ForeignKey(
+        "versions.Version",
+        on_delete=models.CASCADE,
+        related_name="runs",
+        help_text=_("The version this run belongs to"),
+    )
+
+    thread = models.ForeignKey(
+        Thread,
+        on_delete=models.CASCADE,
+        related_name="runs",
+        help_text=_("The thread this run belongs to"),
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=RunStatus.choices,
+        default=RunStatus.CREATED,
+        help_text=_("Current status of the run"),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = RunManager()
+
+
 class MessageManager(OrganizationManagerMixin, models.Manager):
     def get_queryset(self):
         return super().get_queryset().select_related("thread__organization")
@@ -263,7 +301,7 @@ class Message(models.Model):
         AI = "ai", _("AI")
         HUMAN = "human", _("Human")
         HUMAN_AGENT = "human_agent", _("Human Agent")
-        TOOL = "tool", _("Tool")
+        TOOL_ANSWER = "tool", _("Tool Answer")
         COMMENT = "comment", _("Comment")
 
     thread = models.ForeignKey(
@@ -271,6 +309,13 @@ class Message(models.Model):
         on_delete=models.CASCADE,
         related_name="messages",
         help_text=_("The thread this message belongs to"),
+    )
+    run_status = models.CharField(
+        max_length=20,
+        choices=Run.RunStatus.choices,
+        null=True,
+        blank=True,
+        help_text=_("The status of the run when this message was generated"),
     )
     created_at = models.DateTimeField(auto_now_add=True)
     message_type = models.CharField(
@@ -283,6 +328,12 @@ class Message(models.Model):
         help_text=_(
             "List of content objects. Example: [{'type': 'text', 'text': 'Hello'}]"
         ),
+    )
+    tool_call_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text=_("The ID of the tool call this message is a response to"),
     )
 
     objects = MessageManager()
@@ -347,44 +398,6 @@ class Summary(models.Model):
             models.Index(fields=["thread"]),
             models.Index(fields=["-updated_at"]),
         ]
-
-
-class RunManager(OrganizationManagerMixin, models.Manager):
-    def get_queryset(self):
-        return super().get_queryset().select_related("thread__organization")
-
-
-class Run(models.Model):
-    class RunStatus(models.TextChoices):
-        CREATED = "created", _("Created")
-        RUNNING = "running", _("Running")
-        COMPLETED = "completed", _("Completed")
-        ERROR = "error", _("Error")
-        EXPIRED = "expired", _("Expired")
-
-    version = models.ForeignKey(
-        "versions.Version",
-        on_delete=models.CASCADE,
-        related_name="runs",
-        help_text=_("The version this run belongs to"),
-    )
-
-    thread = models.ForeignKey(
-        Thread,
-        on_delete=models.CASCADE,
-        related_name="runs",
-        help_text=_("The thread this run belongs to"),
-    )
-    status = models.CharField(
-        max_length=20,
-        choices=RunStatus.choices,
-        default=RunStatus.CREATED,
-        help_text=_("Current status of the run"),
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    objects = RunManager()
 
 
 @receiver(pre_save, sender=Run)
