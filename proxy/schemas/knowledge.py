@@ -39,14 +39,16 @@ class Part(BaseModel):
     updated_at: datetime
     is_valid: bool = True
 
-    @field_validator("end_line")
-    def validate_end_line(self, value, values):
+    @field_validator("end_line", mode="before")
+    @classmethod
+    def validate_end_line(cls, value, values):
         if "start_line" in values and value <= values["start_line"]:
             raise ValueError("End line must be greater than start line")
         return value
 
-    @field_validator("is_handover")
-    def validate_is_handover(self, value, values):
+    @field_validator("is_handover", mode="before")
+    @classmethod
+    def validate_is_handover(cls, value, values):
         if value and values.get("content_type") == ContentType.BEHAVIOUR:
             raise ValueError(
                 "Handover tag can only be applied to scenarios and examples"
@@ -65,8 +67,9 @@ class Vector(BaseModel):
     updated_at: datetime
     metadata: Dict[str, Any]
 
-    @field_validator("vector")
-    def validate_vector(self, value, values):
+    @field_validator("vector", mode="before")
+    @classmethod
+    def validate_vector(cls, value, values):
         # Assuming DIMENSION_MAP is available in the context
         dimension_map = {
             "ada002": 1536,

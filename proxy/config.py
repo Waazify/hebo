@@ -9,11 +9,11 @@ class Settings(BaseSettings):
     BACKEND_URL: str = "http://backend:8000"
 
     # Database settings
-    DB_NAME: str | None = None
-    DB_USER: str | None = None
-    DB_PASS: str | None = None
-    DB_PORT: str | None = None
-    DB_HOST: str | None = None
+    POSTGRES_DB: str | None = None
+    POSTGRES_USER: str | None = None
+    POSTGRES_PASSWORD: str | None = None
+    POSTGRES_PORT: str | None = None
+    POSTGRES_HOST: str | None = None
     # Langfuse settings
     LANGFUSE_SECRET_KEY: str | None = None
     LANGFUSE_PUBLIC_KEY: str | None = None

@@ -54,11 +54,11 @@ def handle_shutdown_signal(sig, frame):
 
 async def create_db_pool():
     db_pool = await asyncpg.create_pool(
-        user=settings.DB_USER,
-        password=settings.DB_PASS,
-        database=settings.DB_NAME,
-        host=settings.DB_HOST,
-        port=settings.DB_PORT,
+        user=settings.POSTGRES_USER,
+        password=settings.POSTGRES_PASSWORD,
+        database=settings.POSTGRES_DB,
+        host=settings.POSTGRES_HOST,
+        port=settings.POSTGRES_PORT,
     )
     if db_pool:
         async with db_pool.acquire() as db_conn:

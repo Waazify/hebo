@@ -11,18 +11,18 @@ from langchain_core.messages import (
 )
 from langchain_core.runnables import Runnable
 
-from ai.tools import colleague_handoff
 from config import settings
-from llms import init_llm
 from schemas.ai import Session
 from schemas.agent_settings import AgentSetting, Tool
 from services.exceptions import ColleagueHandoffException
 
 from .chat_models.bedrock import get_bedrock_client
 from .langfuse_utils import get_langfuse_config
+from .llms import init_llm
 from .prompts.condense import get_condense_prompt
 from .prompts.system import get_system_prompt
 from .prompts.vision import get_vision_prompt
+from .tools import colleague_handoff
 
 MAX_RECURSION_DEPTH = settings.MAX_RECURSION_DEPTH
 

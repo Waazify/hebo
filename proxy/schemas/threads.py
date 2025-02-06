@@ -56,8 +56,9 @@ class BaseMessage(BaseModel):
     message_type: MessageType
     content: List[MessageContent]
 
-    @field_validator("content")
-    def validate_content(self, value):
+    @field_validator("content", mode="before")
+    @classmethod
+    def validate_content(cls, value):
         if not isinstance(value, list):
             raise ValueError("Content must be a list of objects")
         for item in value:

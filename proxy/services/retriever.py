@@ -7,14 +7,15 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from .ai.conversations import execute_condense
 from .ai.embeddings.voyage import VoyageClient
 
-# TODO: Add support for other embeddings providers
-# TODO: provide a similar interface for other embeddings and chat models
-from .ai.chat_models.bedrock import get_bedrock_client
 from db.vectorstore import VectorStore
-from exceptions import EmbeddingError, RetrievalError
 from schemas.ai import Session
 from schemas.agent_settings import AgentSetting
 from schemas.knowledge import ContentType
+
+# TODO: Add support for other embeddings providers
+# TODO: provide a similar interface for other embeddings and chat models
+from .ai.chat_models.bedrock import get_bedrock_client
+from .exceptions import EmbeddingError, RetrievalError
 
 logger = logging.getLogger(__name__)
 
