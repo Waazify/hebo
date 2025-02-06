@@ -30,4 +30,5 @@ urlpatterns = [
     path("organizations/<str:organization_pk>/knowledge/", include("knowledge.urls")),
     path("organizations/<str:organization_pk>/versions/", include("versions.urls")),
     path("organizations/<str:organization_pk>/agent_settings/", include("agent_settings.urls")),
+    path("organizations/<str:organization_pk>/api-keys/", include("api_keys.urls")),
 ]

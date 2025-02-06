@@ -66,6 +66,89 @@
                     </div>
                 </div>
 
+                <!-- API Keys Card -->
+                <div class="card bg-base-100 shadow-xl mt-6">
+                    <div class="card-body">
+                        <h3 class="card-title">API Keys</h3>
+                        <p class="text-sm text-base-content/70 mt-2">
+                            Manage your API keys for accessing the Hebo AI API.
+                        </p>
+                        
+                        <!-- API Keys Table -->
+                        <div class="overflow-x-auto mt-4" x-data="apiKeys()">
+                            <table class="table table-zebra w-full">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Key</th>
+                                        <th>Created</th>
+                                        <th>Last Used</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="key in keys" :key="key.id">
+                                        <tr>
+                                            <td>
+                                                <span x-show="!key.editing" x-text="key.name"></span>
+                                                <input x-show="key.editing"
+                                                       type="text"
+                                                       class="input input-bordered input-sm"
+                                                       x-model="key.editName"
+                                                       @keyup.enter="updateKeyName(key)"
+                                                       @keyup.escape="cancelEdit(key)">
+                                            </td>
+                                            <td>
+                                                <div class="join">
+                                                    <input type="password" 
+                                                           :value="key.key" 
+                                                           class="input input-bordered input-sm join-item w-64" 
+                                                           readonly>
+                                                    <button class="btn btn-sm join-item"
+                                                            @click="copyToClipboard(key.key)">
+                                                        Copy
+                                                    </button>
+                                                </div>
+                                            </td>
+                                            <td x-text="formatDate(key.created_at)"></td>
+                                            <td x-text="key.last_used_at ? formatDate(key.last_used_at) : 'Never'"></td>
+                                            <td>
+                                                <div class="join">
+                                                    <button class="btn btn-sm join-item"
+                                                            x-show="!key.editing"
+                                                            @click="startEdit(key)">
+                                                        Rename
+                                                    </button>
+                                                    <button class="btn btn-sm btn-primary join-item"
+                                                            x-show="key.editing"
+                                                            @click="updateKeyName(key)">
+                                                        Save
+                                                    </button>
+                                                    <button class="btn btn-sm join-item"
+                                                            x-show="key.editing"
+                                                            @click="cancelEdit(key)">
+                                                        Cancel
+                                                    </button>
+                                                    <button class="btn btn-sm btn-error join-item"
+                                                            @click="deleteKey(key.id)">
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                            
+                            <div class="mt-4">
+                                <button class="btn btn-primary btn-sm" @click="createKey">
+                                    Create New API Key
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Danger Zone Card - Only show to owners -->
                 {% if is_owner %}
                 <div class="card bg-base-100 shadow-xl">
@@ -127,4 +210,77 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+function apiKeys() {
+    return {
+        keys: [],
+        async init() {
+            await this.loadKeys();
+        },
+        async loadKeys() {
+            const response = await fetch(`/organizations/{{ organization.pk }}/api-keys/`);
+            const data = await response.json();
+            this.keys = data.api_keys.map(key => ({
+                ...key,
+                editing: false,
+                editName: key.name
+            }));
+        },
+        async createKey() {
+            const response = await fetch(`/organizations/{{ organization.pk }}/api-keys/create/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                }
+            });
+            if (response.ok) {
+                await this.loadKeys();
+            }
+        },
+        startEdit(key) {
+            key.editing = true;
+            key.editName = key.name;
+        },
+        cancelEdit(key) {
+            key.editing = false;
+            key.editName = key.name;
+        },
+        async updateKeyName(key) {
+            const response = await fetch(`/organizations/{{ organization.pk }}/api-keys/${key.id}/update/`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({ name: key.editName })
+            });
+            if (response.ok) {
+                key.name = key.editName;
+                key.editing = false;
+            }
+        },
+        async deleteKey(keyId) {
+            if (!confirm('Are you sure you want to delete this API key? This action cannot be undone.')) {
+                return;
+            }
+            const response = await fetch(`/organizations/{{ organization.pk }}/api-keys/${keyId}/delete/`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                }
+            });
+            if (response.ok) {
+                await this.loadKeys();
+            }
+        },
+        async copyToClipboard(text) {
+            await navigator.clipboard.writeText(text);
+        },
+        formatDate(dateString) {
+            return new Date(dateString).toLocaleDateString();
+        }
+    }
+}
+</script>
 {% endblock %} 

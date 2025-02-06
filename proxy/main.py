@@ -78,8 +78,8 @@ async def lifespan(app: FastAPI):
     app.state.task_tracker = TaskTracker()
 
     # Set up signal handlers for graceful shutdown
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        signal.signal(sig, handle_shutdown_signal)
+    # for sig in (signal.SIGTERM, signal.SIGINT):
+    #     signal.signal(sig, handle_shutdown_signal)
 
     logger.info(HEBO)
     logger.info("Application startup complete v%s", __version__)
@@ -88,7 +88,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         logger.info("Lifespan context manager is closing")
-        await graceful_shutdown(app)
+    #     await graceful_shutdown(app)
 
 
 app = FastAPI(
@@ -109,13 +109,13 @@ app.add_middleware(
 
 # Add API Key middleware before TaskTracker middleware
 app.add_middleware(APIKeyMiddleware)
-app.add_middleware(TaskTrackerMiddleware)
+# app.add_middleware(TaskTrackerMiddleware)
 
 
 @app.post("/threads", response_model=CreateThreadResponse)
 async def create_thread(request: CreateThreadRequest, req: Request):
     """Create a new thread"""
-    organization_id = req.state.organization.id
+    organization_id = req.state.organization["id"]
     logger.info("Creating thread for organization %s", organization_id)
 
     # Create DB instance for this request
@@ -136,7 +136,7 @@ async def create_thread(request: CreateThreadRequest, req: Request):
 @app.post("/threads/{thread_id}/close", response_model=CloseThreadResponse)
 async def close_thread(thread_id: int, req: Request):
     """Close a thread"""
-    organization_id = req.state.organization.id
+    organization_id = req.state.organization["id"]
     logger.info("Closing thread %s for organization %s", thread_id, organization_id)
 
     async with app.state.db_pool.acquire() as conn:
@@ -168,7 +168,7 @@ async def add_message(request: AddMessageRequest, req: Request, thread_id: int):
     organization = req.state.organization
     async with app.state.db_pool.acquire() as conn:
         thread_manager = ThreadManager(conn)
-        message = await thread_manager.add_message(request, thread_id, organization.id)
+        message = await thread_manager.add_message(request, thread_id, organization["id"])
         return AddMessageResponse(
             message_type=message.message_type, content=message.content
         )
