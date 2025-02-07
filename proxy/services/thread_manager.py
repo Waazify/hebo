@@ -77,7 +77,8 @@ class ThreadManager:
 
     async def _add_message(self, message: Message) -> Message:
         message = await self._format_message(message)
-        await self.db.add_message(message)
+        id = await self.db.add_message(message)
+        message.id = id
         logger.info("added message to thread %s", message.thread_id)
         return message
 
@@ -97,6 +98,7 @@ class ThreadManager:
             content_type = self._get_content_type(content)
             if content_type not in ["text", "image"]:
                 return await self._handle_unsupported_message(content_type, thread_id)
+
         message = Message(
             message_type=message_request.message_type,
             content=message_request.content,
@@ -105,6 +107,15 @@ class ThreadManager:
         )
 
         return await self._add_message(message)
+
+    async def remove_message(self, message_id: int, thread_id: int, organization_id: str) -> int:
+        thread = await self.db.get_thread(thread_id, organization_id)
+
+        if not thread:
+            raise HTTPException(status_code=404, detail="Thread not found")
+
+        await self.db.remove_message(message_id, thread_id)
+        return message_id
 
     async def run_thread(
         self, run_request: RunRequest, thread_id: int, organization_id: str
@@ -352,9 +363,7 @@ class ThreadManager:
                                 "The agent is handing over the conversation, please read the conversation history carefully."
                             )
                     if part.type == MessageContentType.TOOL_USE:
-                        run_status = await self._get_run_status(
-                            run_id, organization_id
-                        )
+                        run_status = await self._get_run_status(run_id, organization_id)
                         run_response = RunResponse(
                             version_id=run_request.version_id,
                             status=run_status,

@@ -23,6 +23,7 @@ from schemas.threads import (
     CreateThreadRequest,
     CreateThreadResponse,
     CloseThreadResponse,
+    RemoveMessageResponse,
     RunRequest,
 )
 from services.thread_manager import ThreadManager
@@ -159,10 +160,26 @@ async def add_message(request: AddMessageRequest, req: Request, thread_id: int):
     organization = req.state.organization
     async with app.state.db_pool.acquire() as conn:
         thread_manager = ThreadManager(conn)
-        message = await thread_manager.add_message(request, thread_id, organization["id"])
-        return AddMessageResponse(
-            message_type=message.message_type, content=message.content
+        message = await thread_manager.add_message(
+            request, thread_id, organization["id"]
         )
+        return AddMessageResponse(
+            id=message.id, message_type=message.message_type, content=message.content
+        )
+
+
+@app.post(
+    "/threads/{thread_id}/messages/{message_id}/remove",
+    response_model=RemoveMessageResponse,
+)
+async def remove_message(message_id: int, req: Request, thread_id: int):
+    organization = req.state.organization
+    async with app.state.db_pool.acquire() as conn:
+        thread_manager = ThreadManager(conn)
+        message_id = await thread_manager.remove_message(
+            message_id, thread_id, organization["id"]
+        )
+        return RemoveMessageResponse(message_id=message_id)
 
 
 @app.post("/threads/{thread_id}/run")
@@ -175,5 +192,7 @@ async def run(request: RunRequest, req: Request, thread_id: int):
     organization = req.state.organization
     async with app.state.db_pool.acquire() as conn:
         thread_manager = ThreadManager(conn)
-        message_stream = thread_manager.run_thread(request, thread_id, organization.id)
+        message_stream = thread_manager.run_thread(
+            request, thread_id, organization["id"]
+        )
     return StreamingResponse(message_stream, media_type="text/event-stream")

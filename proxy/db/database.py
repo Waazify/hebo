@@ -65,6 +65,7 @@ class DB:
         query = "SELECT * FROM threads_thread WHERE id = $1 and organization_id = $2"
         row = await self.conn.fetchrow(query, thread_id, organization_id)
         return Thread(**row) if row else None
+
     @db_operation
     async def close_thread(self, thread_id: int, organization_id: str) -> bool:
         """Close a thread"""
@@ -109,10 +110,10 @@ class DB:
         return message_id
 
     @db_operation
-    async def remove_message(self, message_id: int) -> bool:
+    async def remove_message(self, message_id: int, thread_id: int) -> bool:
         """Remove a message from a thread"""
-        query = "DELETE FROM threads_message WHERE id = $1"
-        result = await self.conn.execute(query, message_id)
+        query = "DELETE FROM threads_message WHERE id = $1 and thread_id = $2"
+        result = await self.conn.execute(query, message_id, thread_id)
         return "DELETE 1" in result
 
     @db_operation
@@ -121,7 +122,7 @@ class DB:
     ) -> Optional[List[Message]]:
         """Get all messages in a thread"""
         query = """
-            SELECT thread_id, created_at, message_type, content
+            SELECT id, thread_id, created_at, message_type, content
             FROM threads_message
             WHERE thread_id = $1 and organization_id = $2
             AND run_status not in ('error', 'expired')
@@ -133,6 +134,7 @@ class DB:
 
         return [
             Message(
+                id=row["id"],
                 thread_id=row["thread_id"],
                 created_at=row["created_at"],
                 message_type=row["message_type"],

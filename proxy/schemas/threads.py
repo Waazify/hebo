@@ -53,6 +53,7 @@ class RunStatus(Enum):
 
 
 class BaseMessage(BaseModel):
+    id: Optional[int] = None
     message_type: MessageType
     content: List[MessageContent]
 
@@ -115,6 +116,10 @@ class AddMessageRequest(BaseMessage): ...
 
 
 class AddMessageResponse(BaseMessage): ...
+
+
+class RemoveMessageResponse(BaseModel):
+    message_id: int
 
 
 class Run(BaseModel):
