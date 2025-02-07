@@ -61,12 +61,15 @@ class BaseMessage(BaseModel):
     def validate_content(cls, value):
         if not isinstance(value, list):
             raise ValueError("Content must be a list of objects")
-        for item in value:
-            if not isinstance(item, MessageContent):
-                raise ValueError("Each content item must be an object")
-            if item.type is None:
-                raise ValueError("Each content item must have a 'type' field")
-        return value
+        # Convert dict items to MessageContent if needed
+        return [
+            item if isinstance(item, MessageContent) else MessageContent(**item)
+            for item in value
+        ]
+
+    class Config:
+        validate_assignment = True  # Enable validation on assignment
+        ignored_types = (type(None),)  # Handle None values
 
 
 class Message(BaseMessage):
@@ -77,6 +80,8 @@ class Message(BaseMessage):
 
     class Config:
         orm_mode = True
+        validate_assignment = True  # Enable validation on assignment
+        ignored_types = (type(None),)  # Handle None values
 
 
 class Summary(BaseModel):

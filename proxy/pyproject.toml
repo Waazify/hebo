@@ -17,3 +17,8 @@ dependencies = [
     "voyageai>=0.3.2",
     "uvicorn>=0.34.0",
 ]
+
+[dependency-groups]
+dev = [
+    "ipdb>=0.13.13",
+]

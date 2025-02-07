@@ -4,6 +4,7 @@ import sys
 from datetime import datetime
 from functools import wraps
 from typing import List, Optional
+import json
 
 import asyncpg
 
@@ -81,15 +82,25 @@ class DB:
         query = """
             INSERT INTO threads_message (
                 thread_id, created_at, message_type, content
-            ) VALUES ($1, $2, $3, $4)
+            ) VALUES ($1, $2, $3, $4::jsonb)
             RETURNING id
         """
+
+        # Convert content list to serializable format with enum values
+        serialized_content = [
+            {**content.model_dump(), "type": content.type.value}
+            for content in message.content
+        ]
+
+        # Convert to JSON string for asyncpg
+        json_content = json.dumps(serialized_content)
+
         message_id = await self.conn.fetchval(
             query,
             message.thread_id,
             message.created_at,
-            message.message_type,
-            [content.model_dump() for content in message.content],
+            message.message_type.value,
+            json_content,
         )
 
         if message_id is None:
