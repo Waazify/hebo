@@ -8,7 +8,7 @@ from .models import AgentSetting, LLMAdapter, Tool
 class AgentSettingAdmin(ModelAdmin):
     list_display = [
         "organization",
-        "version",
+        "version_slugs",
         "core_llm",
         "condense_llm",
         "embeddings",
@@ -24,7 +24,11 @@ class AgentSettingAdmin(ModelAdmin):
         "delay",
         "hide_tool_messages",
     ]
-    search_fields = ["organization__name", "version__name"]
+    search_fields = ["organization__name", "version__name", "version__slugs__slug"]
+
+    def version_slugs(self, obj):
+        return ", ".join([slug.slug for slug in obj.version.slugs.all()])
+    version_slugs.short_description = "Version Slugs"
 
 
 @admin.register(Tool)
