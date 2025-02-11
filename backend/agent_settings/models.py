@@ -53,7 +53,7 @@ class LLMAdapter(models.Model):
         help_text=_("Base URL for API calls (if different from provider default)"),
     )
     name = models.CharField(
-        max_length=100,
+        max_length=150,
         help_text=_("Name/ID of the model from the provider"),
     )
     aws_region = models.CharField(
