@@ -11,6 +11,7 @@ import asyncpg
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 
 from auth.middleware import APIKeyMiddleware
 from config import settings
@@ -155,7 +156,11 @@ async def close_thread(thread_id: int, req: Request):
         )
 
 
-@app.post("/threads/{thread_id}/messages", response_model=AddMessageResponse)
+@app.post(
+    "/threads/{thread_id}/messages",
+    response_model=AddMessageResponse,
+    response_model_exclude_none=True,
+)
 async def add_message(request: AddMessageRequest, req: Request, thread_id: int):
     organization = req.state.organization
     async with app.state.db_pool.acquire() as conn:
@@ -186,13 +191,23 @@ async def remove_message(message_id: int, req: Request, thread_id: int):
 async def run(request: RunRequest, req: Request, thread_id: int):
     """Run the agent.
 
-    Adding a new message to the thread or invoking a new run for the same thread will result in making
-    any new message from the old run expired.
+    The connection will be held open until the streaming is complete.
     """
     organization = req.state.organization
-    async with app.state.db_pool.acquire() as conn:
+    # Create a connection that will be held open for the entire stream
+    conn = await app.state.db_pool.acquire()
+
+    async def cleanup_connection():
+        await app.state.db_pool.release(conn)
+        logger.info("Database connection released after stream completion")
+
+    try:
         thread_manager = ThreadManager(conn)
-        message_stream = thread_manager.run_thread(
-            request, thread_id, organization["id"]
+        return StreamingResponse(
+            thread_manager.run_thread(request, thread_id, organization["id"]),
+            media_type="text/event-stream",
+            background=BackgroundTask(cleanup_connection),
         )
-    return StreamingResponse(message_stream, media_type="text/event-stream")
+    except Exception as e:
+        await cleanup_connection()
+        raise e
