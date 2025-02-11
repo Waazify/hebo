@@ -123,7 +123,8 @@ class RemoveMessageResponse(BaseModel):
 
 
 class Run(BaseModel):
-    version_id: str
+    organization_id: str
+    version_id: int
     thread_id: int
     status: RunStatus
     created_at: datetime
@@ -131,11 +132,11 @@ class Run(BaseModel):
 
 
 class RunRequest(BaseModel):
-    version_id: str
+    agent_version: str
 
 
 class RunResponse(BaseModel):
-    version_id: str
+    agent_version: str
     status: RunStatus
     message: Optional[BaseMessage] = None
     should_send: bool = False

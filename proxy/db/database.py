@@ -145,18 +145,22 @@ class DB:
 
     @db_operation
     async def get_agent_settings(
-        self, version_id: str, organization_id: str
+        self, version_slug: str, organization_id: str
     ) -> Optional[AgentSetting]:
-        """Get agent settings and tools for a version"""
-        # First get agent settings
+        """Get agent settings and tools for a version using its slug"""
+        # First get agent settings by joining through version slugs
         settings_query = """
-            SELECT id, organization_id, version_id, delay, hide_tool_messages,
-                   core_llm_id, condense_llm_id, vision_llm_id, embeddings_id
-            FROM agent_settings_agentsetting
-            WHERE version_id = $1 and organization_id = $2
+            SELECT
+                s.id, s.organization_id, s.version_id, s.delay, s.hide_tool_messages,
+                s.core_llm_id, s.condense_llm_id, s.vision_llm_id, s.embeddings_id
+            FROM agent_settings_agentsetting s
+            JOIN versions_versionslug vs ON vs.version_id = s.version_id 
+            JOIN versions_version v ON v.id = s.version_id
+            WHERE vs.slug = $1 AND s.organization_id = $2
+            LIMIT 1
         """
         settings_row = await self.conn.fetchrow(
-            settings_query, version_id, organization_id
+            settings_query, version_slug, organization_id
         )
 
         if not settings_row:
@@ -187,9 +191,7 @@ class DB:
         adapters_rows = await self.conn.fetch(adapters_query, adapter_ids)
 
         # Convert rows to objects
-        adapters_dict = {
-            row["id"]: LLMAdapter(**dict(row)) for row in adapters_rows
-        }
+        adapters_dict = {row["id"]: LLMAdapter(**dict(row)) for row in adapters_rows}
 
         tools = [Tool(**dict(row)) for row in tools_rows]
 
@@ -204,12 +206,12 @@ class DB:
             embeddings=adapters_dict.get(settings_row["embeddings_id"]),
             delay=settings_row["delay"],
             hide_tool_messages=settings_row["hide_tool_messages"],
-            tools=tools
+            tools=tools,
         )
 
     @db_operation
     async def get_behaviour_part_ids(
-        self, version_id: str, organization_id: str
+        self, version_id: int, organization_id: str
     ) -> List[int]:
         """Get all behaviour part ids for a version, ordered by page hierarchy and part position"""
         query = """
@@ -248,12 +250,17 @@ class DB:
         """Create a new run and return its ID"""
         query = """
             INSERT INTO threads_run (
-                thread_id, version_id, status, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $4)
+                thread_id, organization_id, version_id, status, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $4, $5)
             RETURNING id
         """
         run_id = await self.conn.fetchval(
-            query, run.thread_id, run.version_id, run.status, run.created_at
+            query,
+            run.thread_id,
+            run.organization_id,
+            run.version_id,
+            run.status,
+            run.created_at,
         )
         if run_id is None:
             raise ValueError("Failed to create run")
@@ -265,17 +272,20 @@ class DB:
         query = """
             SELECT *
             FROM threads_run r
-            JOIN threads_thread t ON r.thread_id = t.id
-            WHERE r.id = $1 AND t.organization_id = $2
+            WHERE r.id = $1 AND r.organization_id = $2
         """
         row = await self.conn.fetchrow(query, run_id, organization_id)
         return Run(**row) if row else None
 
     @db_operation
-    async def update_run_status(self, run_id: int, status: str) -> bool:
+    async def update_run_status(
+        self, run_id: int, status: str, organization_id: str
+    ) -> bool:
         """Update the status of a run"""
-        query = "UPDATE threads_run SET status = $1 WHERE id = $2"
-        result = await self.conn.execute(query, status, run_id)
+        query = (
+            "UPDATE threads_run SET status = $1 WHERE id = $2 AND organization_id = $3"
+        )
+        result = await self.conn.execute(query, status, run_id, organization_id)
         return "UPDATE 1" in result
 
 

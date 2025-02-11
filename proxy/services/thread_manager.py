@@ -128,7 +128,7 @@ class ThreadManager:
         try:
             # Init the retriever
             agent_settings = await self.db.get_agent_settings(
-                run_request.version_id, organization_id
+                run_request.agent_version, organization_id
             )
             if not agent_settings:
                 raise HTTPException(status_code=404, detail="Agent settings not found")
@@ -137,7 +137,8 @@ class ThreadManager:
             )
             # Create the run
             run = Run(
-                version_id=run_request.version_id,
+                organization_id=organization_id,
+                version_id=agent_settings.version_id,
                 thread_id=thread_id,
                 status=RunStatus.CREATED,
                 created_at=datetime.now(),
@@ -145,7 +146,7 @@ class ThreadManager:
             )
             run_id = await self.db.create_run(run)
             run_response = RunResponse(
-                version_id=run_request.version_id,
+                agent_version=run_request.agent_version,
                 status=RunStatus.CREATED,
             )
             yield f"data: {run_response.model_dump_json()}\n\n"
@@ -157,7 +158,7 @@ class ThreadManager:
             # TODO: Hint: raise colleague handoff exception if the last message is not human.
             if not messages or messages[-1].message_type != MessageType.HUMAN:
                 run_response = RunResponse(
-                    version_id=run_request.version_id,
+                    agent_version=run_request.agent_version,
                     status=RunStatus.ERROR,
                     message=BaseMessage(
                         message_type=MessageType.COMMENT,
@@ -169,7 +170,7 @@ class ThreadManager:
                         ],
                     ),
                 )
-                await self.db.update_run_status(run_id, RunStatus.ERROR.value)
+                await self.db.update_run_status(run_id, RunStatus.ERROR.value, organization_id)
                 yield f"data: {run_response.model_dump_json()}\n\n"
                 message = Message(
                     message_type=MessageType.COMMENT,
@@ -193,7 +194,7 @@ class ThreadManager:
             run_status = await self._get_run_status(run_id, organization_id)
             if run_status != RunStatus.CREATED:
                 run_response = RunResponse(
-                    version_id=run_request.version_id,
+                    agent_version=run_request.agent_version,
                     status=run_status,
                 )
                 yield f"data: {run_response.model_dump_json()}\n\n"
@@ -218,14 +219,14 @@ class ThreadManager:
                 contact_identifier=thread.contact_identifier,
                 thread_id=str(thread.id),
                 trace_id=uuid.uuid4(),
-                agent_version=run_request.version_id,
+                agent_version=run_request.agent_version,
                 organization_id=organization_id,
             )
 
             # Retrieve relevant context
             context = await retriever.get_relevant_sources(llm_conversation, session)
             behaviour_part_ids = await self.db.get_behaviour_part_ids(
-                run_request.version_id, organization_id
+                agent_settings.version_id, organization_id
             )
             behaviour_parts = []
             for id in behaviour_part_ids:
@@ -325,10 +326,10 @@ class ThreadManager:
                                 == RunStatus.CREATED
                             ):
                                 await self.db.update_run_status(
-                                    run_id, RunStatus.RUNNING.value
+                                    run_id, RunStatus.RUNNING.value, organization_id
                                 )
                                 run_response = RunResponse(
-                                    version_id=run_request.version_id,
+                                    agent_version=run_request.agent_version,
                                     status=RunStatus.RUNNING,
                                 )
                                 yield f"data: {run_response.model_dump_json()}\n\n"
@@ -342,7 +343,7 @@ class ThreadManager:
                                 run_id, organization_id
                             )
                             run_response = RunResponse(
-                                version_id=run_request.version_id,
+                                agent_version=run_request.agent_version,
                                 status=run_status,
                                 message=base_message,
                                 should_send=should_send,
@@ -365,7 +366,7 @@ class ThreadManager:
                     if part.type == MessageContentType.TOOL_USE:
                         run_status = await self._get_run_status(run_id, organization_id)
                         run_response = RunResponse(
-                            version_id=run_request.version_id,
+                            agent_version=run_request.agent_version,
                             status=run_status,
                             message=BaseMessage(
                                 message_type=MessageType.AI,
@@ -385,9 +386,9 @@ class ThreadManager:
 
             run_status = await self._get_run_status(run_id, organization_id)
             if run_status in [RunStatus.RUNNING, RunStatus.CREATED]:
-                await self.db.update_run_status(run_id, RunStatus.COMPLETED.value)
+                await self.db.update_run_status(run_id, RunStatus.COMPLETED.value, organization_id)
                 run_response = RunResponse(
-                    version_id=run_request.version_id,
+                    agent_version=run_request.agent_version,
                     status=RunStatus.COMPLETED,
                 )
                 yield f"data: {run_response.model_dump_json()}\n\n"
@@ -399,7 +400,7 @@ class ThreadManager:
             logger.warning("Handing off thread %s because of Exception.")
 
             run_response = RunResponse(
-                version_id=run_request.version_id,
+                agent_version=run_request.agent_version,
                 status=RunStatus.ERROR,
                 message=BaseMessage(
                     message_type=MessageType.COMMENT,
@@ -415,7 +416,7 @@ class ThreadManager:
                     ],
                 ),
             )
-            await self.db.update_run_status(run_id, RunStatus.ERROR.value)
+            await self.db.update_run_status(run_id, RunStatus.ERROR.value, organization_id)
             yield f"data: {run_response.model_dump_json()}\n\n"
             message = Message(
                 message_type=MessageType.COMMENT,
