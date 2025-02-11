@@ -7,6 +7,8 @@ from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.utils.text import slugify
 from django.core.validators import RegexValidator
+from django.db import transaction
+from typing import Optional
 
 from core.managers import OrganizationManagerMixin
 from hebo_organizations.models import Organization
@@ -92,9 +94,9 @@ class Agent(models.Model):
         """
         Update version slugs for all agent slugs
         """
-        agent_slugs = self.slugs.values_list("slug", flat=True)
+        agent_slugs = self.slugs.values_list("slug", flat=True)  # type: ignore
 
-        for version in self.versions.all():
+        for version in self.versions.all():  # type: ignore
             # Create version-specific slugs for all agent slugs
             for agent_slug in agent_slugs:
                 VersionSlug.objects.get_or_create(
@@ -307,7 +309,7 @@ class Version(models.Model):
 
     def _update_slugs(self, is_new, old_status):
         """Update slugs based on version status"""
-        agent_slugs = self.agent.slugs.values_list("slug", flat=True)
+        agent_slugs = self.agent.slugs.values_list("slug", flat=True)  # type: ignore
 
         # Always ensure version-specific slugs exist for all agent slugs
         for agent_slug in agent_slugs:
@@ -353,6 +355,94 @@ class Version(models.Model):
                     version=self, slug=f"{agent_slug}:next"
                 )
 
+    def duplicate_from(self, source_version: Optional['Version'] = None) -> None:
+        """
+        Duplicates related models from source version to this version.
+        If source_version is None, tries to find the current version of the same agent.
+        """
+        if not source_version:
+            source_version = Version.objects.filter(
+                agent=self.agent,
+                status=self.Status.CURRENT
+            ).first()
+
+        if not source_version:
+            return
+
+        # Initialize page mapping dictionary
+        self._page_mapping = {}
+
+        # Duplicate agent settings with their tools
+        self._duplicate_agent_settings(source_version)
+
+        # Duplicate pages with their parts and vectors
+        self._duplicate_pages(source_version)
+
+    def _duplicate_agent_settings(self, source_version: 'Version') -> None:
+        """Helper method to duplicate agent settings and tools."""
+        from agent_settings.models import AgentSetting
+
+        with transaction.atomic():
+            # Copy agent settings
+            old_settings = source_version.agent_settings  # type: ignore
+            new_settings = AgentSetting.objects.create(
+                organization=self.agent.organization,
+                version=self,
+                core_llm=old_settings.core_llm,
+                condense_llm=old_settings.condense_llm,
+                embeddings=old_settings.embeddings,
+                vision_llm=old_settings.vision_llm,
+                delay=old_settings.delay,
+                hide_tool_messages=old_settings.hide_tool_messages,
+            )
+
+            # Copy associated tools
+            for tool in old_settings.tools.all():
+                tool.pk = None  # This will create a new instance
+                tool.agent_setting = new_settings
+                tool.save()
+
+    def _duplicate_pages(self, source_version: 'Version') -> None:
+        """Helper method to duplicate pages, parts, and vectors."""
+        from knowledge.models import Page
+
+        with transaction.atomic():
+            for old_page in source_version.pages.all():  # type: ignore
+                # Skip part generation during cloning
+                new_page = Page(
+                    organization=self.agent.organization,
+                    version=self,
+                    title=old_page.title,
+                    content=old_page.content,
+                    is_published=old_page.is_published,
+                    position=old_page.position,
+                    parent=None  # We'll update this after all pages are created
+                )
+                new_page._skip_part_generation = True
+                new_page.save()
+
+                # Store old_id -> new_id mapping for updating parent relationships
+                self._page_mapping[old_page.id] = new_page.id  # type: ignore
+
+                # Copy parts and their vectors
+                for old_part in old_page.parts.all():
+                    new_part = old_part
+                    new_part.pk = None
+                    new_part.page = new_page
+                    new_part.save()
+
+                    # Copy vectors
+                    for old_vector in old_part.vectors.all():
+                        old_vector.pk = None
+                        old_vector.part = new_part
+                        old_vector.save()
+
+            # Update parent relationships for pages
+            for old_page in source_version.pages.filter(parent__isnull=False):  # type: ignore
+                new_page_id = self._page_mapping[old_page.id]
+                new_parent_id = self._page_mapping[old_page.parent_id]
+                Page.objects.filter(id=new_page_id).update(parent_id=new_parent_id)
+
 
 class VersionSlug(models.Model):
     version = models.ForeignKey(
@@ -382,10 +472,16 @@ def create_initial_version(sender, instance, created, **kwargs):
     """
     if created:
         version = Version.objects.create(
-            agent=instance, name="v1", status=Version.Status.NEXT
+            agent=instance,
+            name="v1",
+            status=Version.Status.NEXT
         )
+        # The initial_version_created signal will trigger creation of default settings
         initial_version_created.send(
-            sender=sender, created=True, agent=instance, version=version
+            sender=sender,
+            created=True,
+            agent=instance,
+            version=version
         )
 
 
@@ -406,3 +502,13 @@ def delete_empty_agent(sender, instance, **kwargs):
     # Check if this was the last version
     if not Version.objects.filter(agent=instance.agent).exists():
         instance.agent.delete()
+
+
+@receiver(post_save, sender=Version)
+def handle_version_creation(sender, instance, created, **kwargs):
+    """
+    Signal handler to duplicate settings and pages when a new version is created.
+    Skips the initial version creation as it's handled by create_initial_version.
+    """
+    if created and instance.name != "v1":  # Skip initial version
+        instance.duplicate_from()

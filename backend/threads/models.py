@@ -266,6 +266,13 @@ class Run(models.Model):
         ERROR = "error", _("Error")
         EXPIRED = "expired", _("Expired")
 
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="runs",
+        help_text=_("Organization this run belongs to"),
+    )
+
     version = models.ForeignKey(
         "versions.Version",
         on_delete=models.CASCADE,

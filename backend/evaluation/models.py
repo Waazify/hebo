@@ -15,28 +15,15 @@ class TestCase(models.Model):
     Represents a single test case.
     """
 
-    TEST_STATUS = [
-        ("passed", "Passed"),
-        ("failed", "Failed"),
-        ("skipped", "Skipped"),
-    ]
-
     organization = models.ForeignKey(
         Organization,
         on_delete=models.CASCADE,
         related_name="test_cases",
         help_text=_("Organization this test case belongs to"),
     )
-    version = models.ForeignKey(
-        Version,
-        related_name="test_cases",
-        on_delete=models.CASCADE,
-        help_text=_("The version this test case belongs to"),
-    )
 
     name = models.CharField(max_length=100)
     description = models.TextField(null=True, blank=True)
-    status = models.CharField(max_length=10, choices=TEST_STATUS, default="skipped")
 
     # Metadata fields
     created_at = models.DateTimeField(default=timezone.now)
@@ -69,7 +56,7 @@ class TestRun(models.Model):
         related_name="test_runs",
         help_text=_("Organization this test run belongs to"),
     )
-    version = models.OneToOneField(
+    version = models.ForeignKey(
         Version,
         related_name="test_run",
         on_delete=models.CASCADE,
@@ -155,15 +142,19 @@ class TestRunCase(models.Model):
     storing run-specific test case results.
     """
 
+    TEST_STATUS = [
+        ("passed", "Passed"),
+        ("failed", "Failed"),
+        ("skipped", "Skipped"),
+    ]
+
     test_run = models.ForeignKey(
         TestRun, related_name="test_run_cases", on_delete=models.CASCADE
     )
     test_case = models.ForeignKey(
         TestCase, related_name="test_run_cases", on_delete=models.CASCADE
     )
-    status = models.CharField(
-        max_length=10, choices=TestCase.TEST_STATUS, default="skipped"
-    )
+    status = models.CharField(max_length=10, choices=TEST_STATUS, default="skipped")
     executed_at = models.DateTimeField(auto_now_add=True)
     execution_time = models.FloatField(null=True, blank=True)
     error_message = models.TextField(null=True, blank=True)

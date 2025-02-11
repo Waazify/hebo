@@ -74,6 +74,9 @@ class Page(models.Model):
         related_name="children",
     )
 
+    # Add a new attribute to control part generation
+    _skip_part_generation = False
+
     objects = PageManager()
 
     class Meta:
@@ -104,8 +107,12 @@ class Page(models.Model):
 
         super().save(*args, **kwargs)
 
-        # Generate new parts
-        self.generate_parts()
+        # Only generate parts if not explicitly skipped
+        if not self._skip_part_generation:
+            self.generate_parts()
+
+        # Reset the flag after save
+        self._skip_part_generation = False
 
     def generate_parts(self):
         """
