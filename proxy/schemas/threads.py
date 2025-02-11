@@ -23,6 +23,7 @@ class MessageContentType(Enum):
     IMAGE = "image"
     TOOL_USE = "tool_use"
     IMAGE_URL = "image_url"
+    ERROR = "error"
 
 
 class MessageContent(BaseModel):
@@ -34,6 +35,7 @@ class MessageContent(BaseModel):
     name: Optional[str] = None
     input: Optional[dict] = None
     id: Optional[str] = None
+    error: Optional[str] = None
 
 
 class MessageType(Enum):

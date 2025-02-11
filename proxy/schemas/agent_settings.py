@@ -53,7 +53,7 @@ class Tool(BaseModel):
 
 class AgentSetting(BaseModel):
     id: int
-    organization_id: int
+    organization_id: str
     version_id: int
     core_llm: Optional[LLMAdapter] = None
     condense_llm: Optional[LLMAdapter] = None

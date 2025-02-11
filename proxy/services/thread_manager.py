@@ -108,7 +108,9 @@ class ThreadManager:
 
         return await self._add_message(message)
 
-    async def remove_message(self, message_id: int, thread_id: int, organization_id: str) -> int:
+    async def remove_message(
+        self, message_id: int, thread_id: int, organization_id: str
+    ) -> int:
         thread = await self.db.get_thread(thread_id, organization_id)
 
         if not thread:
@@ -121,6 +123,7 @@ class ThreadManager:
         self, run_request: RunRequest, thread_id: int, organization_id: str
     ):
         logger.info("load conversation detail from DB")
+        run_id = None
         thread = await self.db.get_thread(thread_id, organization_id)
         if not thread or thread.id is None:
             logger.info("thread %s not found", thread_id)
@@ -130,8 +133,14 @@ class ThreadManager:
             agent_settings = await self.db.get_agent_settings(
                 run_request.agent_version, organization_id
             )
+
             if not agent_settings:
                 raise HTTPException(status_code=404, detail="Agent settings not found")
+            if not agent_settings.core_llm:
+                raise HTTPException(status_code=404, detail="Core LLM not found")
+            if not agent_settings.embeddings:
+                raise HTTPException(status_code=404, detail="Embeddings not found")
+
             retriever = Retriever(
                 vector_store=self.vectorstore, agent_settings=agent_settings
             )
@@ -149,7 +158,7 @@ class ThreadManager:
                 agent_version=run_request.agent_version,
                 status=RunStatus.CREATED,
             )
-            yield f"data: {run_response.model_dump_json()}\n\n"
+            yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
 
             messages = await self.db.get_valid_thread_messages(
                 thread_id, organization_id
@@ -164,21 +173,23 @@ class ThreadManager:
                         message_type=MessageType.COMMENT,
                         content=[
                             MessageContent(
-                                type=MessageContentType.TEXT,
-                                text="Last message in thread is not human. Skipping processing.",
-                            )
+                                type=MessageContentType.ERROR,
+                                error="Last message in thread is not human. Skipping processing.",
+                            ),
                         ],
                     ),
                 )
-                await self.db.update_run_status(run_id, RunStatus.ERROR.value, organization_id)
-                yield f"data: {run_response.model_dump_json()}\n\n"
+                await self.db.update_run_status(
+                    run_id, RunStatus.ERROR.value, organization_id
+                )
+                yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
                 message = Message(
                     message_type=MessageType.COMMENT,
                     content=[
                         MessageContent(
-                            type=MessageContentType.TEXT,
-                            text="Last message in thread is not human. Skipping processing.",
-                        )
+                            type=MessageContentType.ERROR,
+                            error="Last message in thread is not human. Skipping processing.",
+                        ),
                     ],
                     created_at=datetime.now(),
                     thread_id=thread.id,
@@ -197,7 +208,7 @@ class ThreadManager:
                     agent_version=run_request.agent_version,
                     status=run_status,
                 )
-                yield f"data: {run_response.model_dump_json()}\n\n"
+                yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
                 logger.info("Run %s is not in CREATED status", run_id)
 
             # Merge messages
@@ -332,7 +343,7 @@ class ThreadManager:
                                     agent_version=run_request.agent_version,
                                     status=RunStatus.RUNNING,
                                 )
-                                yield f"data: {run_response.model_dump_json()}\n\n"
+                                yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
 
                             base_message = BaseMessage(
                                 message_type=message_type,
@@ -348,7 +359,7 @@ class ThreadManager:
                                 message=base_message,
                                 should_send=should_send,
                             )
-                            yield f"data: {run_response.model_dump_json()}\n\n"
+                            yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
                             message = Message(
                                 message_type=reply.message_type,
                                 content=[part],
@@ -374,7 +385,7 @@ class ThreadManager:
                             ),
                             should_send=False,
                         )
-                        yield f"data: {run_response.model_dump_json()}\n\n"
+                        yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
                         message = Message(
                             message_type=MessageType.AI,
                             content=[part],
@@ -386,12 +397,14 @@ class ThreadManager:
 
             run_status = await self._get_run_status(run_id, organization_id)
             if run_status in [RunStatus.RUNNING, RunStatus.CREATED]:
-                await self.db.update_run_status(run_id, RunStatus.COMPLETED.value, organization_id)
+                await self.db.update_run_status(
+                    run_id, RunStatus.COMPLETED.value, organization_id
+                )
                 run_response = RunResponse(
                     agent_version=run_request.agent_version,
                     status=RunStatus.COMPLETED,
                 )
-                yield f"data: {run_response.model_dump_json()}\n\n"
+                yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
                 logger.info("Run %s is completed", run_id)
 
         except Exception as e:
@@ -410,14 +423,21 @@ class ThreadManager:
                             text=(
                                 e.message
                                 if isinstance(e, ColleagueHandoffException)
-                                else f"Something went wrong. Please, take over the conversation: {e}"
+                                else "Something went wrong. Please, take over the conversation."
                             ),
-                        )
+                        ),
+                        MessageContent(
+                            type=MessageContentType.ERROR,
+                            error=str(e),
+                        ),
                     ],
                 ),
             )
-            await self.db.update_run_status(run_id, RunStatus.ERROR.value, organization_id)
-            yield f"data: {run_response.model_dump_json()}\n\n"
+            if run_id:
+                await self.db.update_run_status(
+                    run_id, RunStatus.ERROR.value, organization_id
+                )
+            yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
             message = Message(
                 message_type=MessageType.COMMENT,
                 content=[
@@ -426,9 +446,13 @@ class ThreadManager:
                         text=(
                             e.message
                             if isinstance(e, ColleagueHandoffException)
-                            else f"Something went wrong. Please, take over the conversation: {e}"
+                            else "Something went wrong. Please, take over the conversation."
                         ),
-                    )
+                    ),
+                    MessageContent(
+                        type=MessageContentType.ERROR,
+                        error=str(e),
+                    ),
                 ],
                 created_at=datetime.now(),
                 thread_id=thread.id,
@@ -625,10 +649,9 @@ class ThreadManager:
 
         # Create a concise comment for operations
         comment_text = (
-            f"Tool (colleague handoff): Message type '{content_type}' is not supported"
+            f"Message type '{content_type}' is not supported. The message will be ignored."
         )
 
-        logger.info("Handoff")
         return Message(
             message_type=MessageType.COMMENT,
             content=[MessageContent(type=MessageContentType.TEXT, text=comment_text)],
