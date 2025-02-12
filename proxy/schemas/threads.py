@@ -59,6 +59,15 @@ class BaseMessage(BaseModel):
     message_type: MessageType
     content: List[MessageContent]
 
+    def to_langchain_format(self) -> dict:
+        data = self.model_dump(exclude_none=True)
+        if self.content:
+            data["content"] = [
+                {**c.model_dump(exclude_none=True), "type": c.type.value}
+                for c in self.content
+            ]
+        return data
+
     @field_validator("content", mode="before")
     @classmethod
     def validate_content(cls, value):

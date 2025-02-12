@@ -160,15 +160,14 @@ class ThreadManager:
             )
             yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
 
-            messages = await self.db.get_valid_thread_messages(
-                thread_id, organization_id
-            )
+            messages = await self.db.get_valid_thread_messages(thread_id)
             # TODO: refactor the following: we can reduce code duplication here.
             # TODO: Hint: raise colleague handoff exception if the last message is not human.
             if not messages or messages[-1].message_type != MessageType.HUMAN:
+                logger.info("Last message: %s", messages[-1] if messages else None)
                 run_response = RunResponse(
                     agent_version=run_request.agent_version,
-                    status=RunStatus.ERROR,
+                    status=RunStatus.COMPLETED,
                     message=BaseMessage(
                         message_type=MessageType.COMMENT,
                         content=[
@@ -180,7 +179,7 @@ class ThreadManager:
                     ),
                 )
                 await self.db.update_run_status(
-                    run_id, RunStatus.ERROR.value, organization_id
+                    run_id, RunStatus.COMPLETED.value, organization_id
                 )
                 yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
                 message = Message(
@@ -193,7 +192,7 @@ class ThreadManager:
                     ],
                     created_at=datetime.now(),
                     thread_id=thread.id,
-                    run_status=RunStatus.ERROR,
+                    run_status=RunStatus.COMPLETED,
                 )
                 await self._add_message(message)
                 return
@@ -223,7 +222,9 @@ class ThreadManager:
                         "human": HumanMessage,
                         "tool": ToolMessage,
                     }[message.message_type.value]
-                    llm_conversation.append(message_class(**message.content))
+                    llm_conversation.append(
+                        message_class(**message.to_langchain_format())
+                    )
 
             # Create a session to trace the thread execution
             session = Session(
@@ -410,7 +411,7 @@ class ThreadManager:
         except Exception as e:
             logger.error("Error running thread: %s", e, exc_info=True)
 
-            logger.warning("Handing off thread %s because of Exception.")
+            logger.warning("Handing off thread because of Exception.")
 
             run_response = RunResponse(
                 agent_version=run_request.agent_version,
@@ -522,48 +523,49 @@ class ThreadManager:
         if messages[-1].message_type != MessageType.HUMAN:
             return self._sanitize_messages(messages[:-1])
 
-        if messages[-2].message_type == MessageType.TOOL_ANSWER:
-            tool_name = f" {messages[-2].content[0].name}"
-            messages[-2].content.append(
-                MessageContent(
-                    type=MessageContentType.TEXT,
-                    text=f"Above is the tool answer{tool_name}. In the meantime, the user has sent the following messages:",
-                )
-            )
-            for message_content in messages[-1].content:
-                messages[-2].content.append(message_content)
-            messages[-2].content.append(
-                MessageContent(
-                    type=MessageContentType.TEXT,
-                    text="Please continue the conversation considering the above tool answer and the user's messages.",
-                )
-            )
-            return messages[:-1]
-
-        if messages[-2].message_type == MessageType.AI and any(
-            c.type == MessageContentType.TOOL_USE for c in messages[-2].content
-        ):
-            for content in messages[-2].content:
-                if content.type == MessageContentType.TOOL_USE:
-                    tool_call_id = content.id
-
-                    # Create a tool answer message between the AI tool use and human message
-                    tool_answer_message = Message(
-                        message_type=MessageType.TOOL_ANSWER,
-                        content=[
-                            MessageContent(
-                                type=MessageContentType.TEXT,
-                                text="The tool was called but no response was received. Try again.",
-                            )
-                        ],
-                        created_at=messages[-1].created_at - timedelta(seconds=1),
-                        thread_id=messages[-1].thread_id,
-                        tool_call_id=tool_call_id,
+        if len(messages) > 1:
+            if messages[-2].message_type == MessageType.TOOL_ANSWER:
+                tool_name = f" {messages[-2].content[0].name}"
+                messages[-2].content.append(
+                    MessageContent(
+                        type=MessageContentType.TEXT,
+                        text=f"Above is the tool answer{tool_name}. In the meantime, the user has sent the following messages:",
                     )
+                )
+                for message_content in messages[-1].content:
+                    messages[-2].content.append(message_content)
+                messages[-2].content.append(
+                    MessageContent(
+                        type=MessageContentType.TEXT,
+                        text="Please continue the conversation considering the above tool answer and the user's messages.",
+                    )
+                )
+                return messages[:-1]
 
-                    # Insert the tool answer message between AI and human messages
-                    messages.insert(-1, tool_answer_message)
-            return self._sanitize_messages(messages)
+            if messages[-2].message_type == MessageType.AI and any(
+                c.type == MessageContentType.TOOL_USE for c in messages[-2].content
+            ):
+                for content in messages[-2].content:
+                    if content.type == MessageContentType.TOOL_USE:
+                        tool_call_id = content.id
+
+                        # Create a tool answer message between the AI tool use and human message
+                        tool_answer_message = Message(
+                            message_type=MessageType.TOOL_ANSWER,
+                            content=[
+                                MessageContent(
+                                    type=MessageContentType.TEXT,
+                                    text="The tool was called but no response was received. Try again.",
+                                )
+                            ],
+                            created_at=messages[-1].created_at - timedelta(seconds=1),
+                            thread_id=messages[-1].thread_id,
+                            tool_call_id=tool_call_id,
+                        )
+
+                        # Insert the tool answer message between AI and human messages
+                        messages.insert(-1, tool_answer_message)
+                return self._sanitize_messages(messages)
 
         return messages
 
@@ -648,9 +650,7 @@ class ThreadManager:
         logger.warning(f"Unexpected message type received: {content_type}. ")
 
         # Create a concise comment for operations
-        comment_text = (
-            f"Message type '{content_type}' is not supported. The message will be ignored."
-        )
+        comment_text = f"Message type '{content_type}' is not supported. The message will be ignored."
 
         return Message(
             message_type=MessageType.COMMENT,
@@ -694,8 +694,6 @@ class ThreadManager:
 
     @staticmethod
     async def _format_comment_message(message: Message) -> Message:
-        content = await get_content_from_human_message(message)
-        message.content = content
         message.message_type = MessageType.COMMENT
         return message
 

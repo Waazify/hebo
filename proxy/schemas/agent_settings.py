@@ -21,11 +21,11 @@ class ProviderType(str, Enum):
 class LLMAdapter(BaseModel):
     id: int
     is_default: bool
-    organization_id: Optional[int] = None
+    organization_id: Optional[str] = None
     model_type: ModelType
     provider: ProviderType
     api_base: Optional[str] = None
-    name: str = Field(max_length=100)
+    name: str = Field(max_length=150)
     aws_region: Optional[str] = Field(default=None, max_length=50)
     api_key: Optional[str] = Field(default=None, max_length=2000)
     aws_access_key_id: Optional[str] = Field(default=None, max_length=255)

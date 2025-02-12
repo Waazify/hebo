@@ -36,7 +36,6 @@ def get_langfuse_config(name: str, session: Session) -> RunnableConfig:
     )
 
 
-
 def trace(
     name: str = "embeddings", model: str = "voyage-multimodal-3", session=None
 ) -> Callable:
@@ -61,7 +60,7 @@ def trace(
             )
 
             # Get inputs from first positional argument or kwargs
-            inputs = args[0] if args else kwargs.get("inputs", [])
+            inputs = kwargs.get("inputs") if "inputs" in kwargs else args[1]
 
             generation = trace.generation(
                 name=name,
@@ -69,7 +68,7 @@ def trace(
                 model_metadata=kwargs,
                 input=[
                     {"role": "user", "content": str(item)}
-                    for sublist in inputs
+                    for sublist in (inputs or [])
                     for item in sublist
                     if isinstance(item, str)
                 ],
@@ -100,4 +99,3 @@ def trace(
         return wrapper
 
     return decorator
-

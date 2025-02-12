@@ -198,7 +198,10 @@ def execute_vision(
     def get_llm(client):
         """Initialize the LLM, bind tools to it, and return the instance."""
         logger.debug("Getting LLM instance")
-        return init_llm(client, agent_settings.vision_llm)
+        return init_llm(
+            client,
+            agent_settings.vision_llm.name if agent_settings.vision_llm else None,
+        )
 
     llm = get_llm(client)
 
@@ -271,7 +274,10 @@ def execute_condense(
     def get_llm(client):
         """Initialize the LLM, bind tools to it, and return the instance."""
         logger.debug("Getting LLM instance")
-        return init_llm(client, agent_settings.condense_llm)
+        return init_llm(
+            client,
+            agent_settings.condense_llm.name if agent_settings.condense_llm else None,
+        )
 
     llm = get_llm(client)
     chat_history, follow_up_question = _format_conversation(

@@ -10,7 +10,7 @@ from services.exceptions import EmbeddingError
 class VoyageClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.client = self._init_voyage_client()
+        self._client = self._init_voyage_client()
 
     def _init_voyage_client(self) -> voyageai.Client:
         """Initialize the VoyageAI client with API key from settings.
@@ -55,7 +55,7 @@ class VoyageClient:
             embeddings = get_multimodal_embeddings(inputs)
         """
         try:
-            return self.client.multimodal_embed(
+            return self._client.multimodal_embed(
                 inputs=inputs,
                 model="voyage-multimodal-3",
                 input_type=input_type,

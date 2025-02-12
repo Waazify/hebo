@@ -9,7 +9,7 @@ import json
 import asyncpg
 
 from schemas.agent_settings import AgentSetting, LLMAdapter, Tool
-from schemas.threads import Message, Run, Thread
+from schemas.threads import Message, MessageType, MessageContent, Thread, Run
 
 logger = logging.getLogger(__name__)
 
@@ -82,14 +82,14 @@ class DB:
         """Add a message to a thread"""
         query = """
             INSERT INTO threads_message (
-                thread_id, created_at, message_type, content
-            ) VALUES ($1, $2, $3, $4::jsonb)
+                thread_id, created_at, message_type, content, run_status
+            ) VALUES ($1, $2, $3, $4::jsonb, $5)
             RETURNING id
         """
 
         # Convert content list to serializable format with enum values
         serialized_content = [
-            {**content.model_dump(), "type": content.type.value}
+            {**content.model_dump(exclude_none=True), "type": content.type.value}
             for content in message.content
         ]
 
@@ -102,6 +102,7 @@ class DB:
             message.created_at,
             message.message_type.value,
             json_content,
+            message.run_status.value if message.run_status else None,
         )
 
         if message_id is None:
@@ -118,17 +119,18 @@ class DB:
 
     @db_operation
     async def get_valid_thread_messages(
-        self, thread_id: int, organization_id: str
+        self, thread_id: int
     ) -> Optional[List[Message]]:
         """Get all messages in a thread"""
         query = """
             SELECT id, thread_id, created_at, message_type, content
             FROM threads_message
-            WHERE thread_id = $1 and organization_id = $2
-            AND run_status not in ('error', 'expired')
+            WHERE thread_id = $1
+            AND (run_status NOT IN ('error', 'expired') OR run_status IS NULL)
+            AND message_type != 'comment'
             ORDER BY created_at ASC
         """
-        rows = await self.conn.fetch(query, thread_id, organization_id)
+        rows = await self.conn.fetch(query, thread_id)
         if not rows:
             return None
 
@@ -137,8 +139,15 @@ class DB:
                 id=row["id"],
                 thread_id=row["thread_id"],
                 created_at=row["created_at"],
-                message_type=row["message_type"],
-                content=row["content"],
+                message_type=MessageType(row["message_type"]),
+                content=[
+                    MessageContent(**content_item)
+                    for content_item in (
+                        json.loads(row["content"])
+                        if isinstance(row["content"], str)
+                        else row["content"]
+                    )
+                ],
             )
             for row in rows
         ]
@@ -238,7 +247,7 @@ class DB:
             JOIN page_hierarchy ph ON pg.id = ph.id
             WHERE pg.version_id = $1
               AND pg.organization_id = $2
-              AND p.type = 'behaviour'
+              AND p.content_type = 'behaviour'
               AND p.is_valid = true
             ORDER BY ph.path, p.start_line
         """
@@ -251,7 +260,7 @@ class DB:
         query = """
             INSERT INTO threads_run (
                 thread_id, organization_id, version_id, status, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $4, $5)
+            ) VALUES ($1, $2, $3, $4, $5, $5)
             RETURNING id
         """
         run_id = await self.conn.fetchval(
@@ -259,7 +268,7 @@ class DB:
             run.thread_id,
             run.organization_id,
             run.version_id,
-            run.status,
+            run.status.value,
             run.created_at,
         )
         if run_id is None:
