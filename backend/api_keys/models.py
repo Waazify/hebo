@@ -1,7 +1,10 @@
 import secrets
 
 from django.db import models
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
+
 from core.managers import OrganizationManagerMixin
 from hebo_organizations.models import Organization
 
@@ -49,3 +52,14 @@ class APIKey(models.Model):
         super().save(*args, **kwargs)
 
     objects = APIKeyManager()
+
+
+@receiver(post_save, sender=Organization)
+def create_initial_agent(sender, instance, created, **kwargs):
+    """
+    Signal handler to create a first API key when a new Organization is created.
+    """
+    if created:
+        APIKey.objects.create(
+            organization=instance, name=f"{instance.name} API Key"
+        )

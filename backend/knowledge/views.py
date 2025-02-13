@@ -175,10 +175,6 @@ class KnowledgeBaseView(LoginRequiredMixin, OrganizationPermissionMixin, ListVie
             new_position = data.get("position", 0)
             old_parent_id = data.get("old_parent_id")
 
-            print(
-                f"Handling reorder: page_id={page_id}, new_parent_id={new_parent_id}, new_position={new_position}, old_parent_id={old_parent_id}"
-            )
-
             page = Page.objects.get(id=page_id, organization=self.organization)
             page.parent_id = new_parent_id  # type: ignore
             page.position = new_position

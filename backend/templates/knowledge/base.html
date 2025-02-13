@@ -22,8 +22,59 @@
     outline: 2px dashed #4a90e2;
     outline-offset: 2px;
   }
+
+  /* Custom scrollbar styles */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.3);
+  }
+
+  /* Hide scrollbar when not needed */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+  }
 </style>
 <script>
+  // Configure the FastAPI base URL
+  const PROXY_SERVER_BASE_URL = "{{ PROXY_SERVER_BASE_URL }}";
+  const PROXY_SERVER_API_KEY = "{{ PROXY_SERVER_API_KEY }}";
+
+  // Add error handling for fetch calls
+  const fetchWithErrorHandling = async (url, options) => {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        credentials: "include",
+        headers: {
+          ...options.headers,
+          "Content-Type": "application/json",
+          "X-API-Key": PROXY_SERVER_API_KEY,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response;
+    } catch (error) {
+      console.error("Fetch error:", error);
+      throw error;
+    }
+  };
+
   // --- Drag & Drop functions with additional debug logging ---
 
   function handleDragStart(event) {
@@ -99,11 +150,6 @@
     const rect = dropZone.getBoundingClientRect();
     const offsetX = event.clientX - rect.left;
     const offsetY = event.clientY - rect.top;
-    console.log("handleDrop offsets:", {
-      offsetX: offsetX,
-      offsetY: offsetY,
-      rectHeight: rect.height,
-    });
 
     // If horizontal offset is greater than 50 pixels, treat drop as a request
     // to make the dropZone a parent (i.e. drop as a child of that page).
@@ -135,16 +181,6 @@
     // Determine old parent based on current container.
     const oldContainer = draggedLi.parentElement;
     const oldParentId = oldContainer.getAttribute("data-parent-id") || null;
-
-    console.log("Drop details:", {
-      draggedPageId: draggedPageId,
-      newParentId: newParentId,
-      newPosition: newPosition,
-      oldParentId: oldParentId,
-      dropZoneId: dropZone.dataset.pageId,
-      offsetX: offsetX,
-      offsetY: offsetY,
-    });
 
     // Remove the dragged element from its current container.
     draggedLi.remove();
@@ -186,15 +222,15 @@
   }
 </script>
 {% endblock %} {% block content %}
-<div class="flex flex-col min-h-screen" x-data="{ showSearchModal: false }">
+<div class="flex flex-col h-[calc(100vh-4rem)]" x-data="{ showSearchModal: false }">
   {% csrf_token %}
   <meta name="selected-version" content="{{ selected_version_id }}" />
   <!-- Main content area -->
-  <div class="flex-1 flex">
+  <div class="flex-1 flex overflow-hidden">
     <!-- Workspace sidebar -->
     <aside class="w-64 bg-base-200 border-r flex flex-col">
-      <!-- Navigation takes remaining space -->
-      <nav class="flex-1 p-2">
+      <!-- Fixed sections -->
+      <div class="flex-none p-2">
         <!-- Agent Settings Section -->
         <div>
           <div class="px-2">
@@ -249,59 +285,82 @@
           <div class="px-4 h-[1px] bg-base-300 my-2"></div>
         </div>
 
-        <!-- Knowledge Base Section -->
-        <div>
-          <div class="px-2">
-            <button
-              @click.prevent="createNewPage()"
-              class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-base-content/50 uppercase tracking-wider hover:bg-base-300 rounded-lg"
+        <!-- Knowledge Base Header -->
+        <div class="px-2">
+          <button
+            @click.prevent="createNewPage()"
+            class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-base-content/50 uppercase tracking-wider hover:bg-base-300 rounded-lg"
+          >
+            <span>Knowledge Base</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
             >
-              <span>Knowledge Base</span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M12 4.5v15m7.5-7.5h-15"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Scrollable knowledge base items -->
+      <div class="flex-1 overflow-y-auto custom-scrollbar">
+        <div class="px-2">
+          <ul class="space-y-0.5 knowledge-base-items">
+            {% for page in pages %}
+            <li
+              class="group relative"
+              x-data="{ showMenu: false }"
+              data-drop-zone
+              data-page-id="{{ page.pk }}"
+              ondragover="handleDragOver(event)"
+              ondragleave="handleDragLeave(event)"
+              ondrop="handleDrop(event)"
+            >
+              <div
+                class="flex items-center rounded-lg transition-colors hover:bg-base-300 {% if page.pk == current_page.pk %}bg-base-300{% endif %}"
               >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 4.5v15m7.5-7.5h-15"
-                />
-              </svg>
-            </button>
-          </div>
-          <div class="px-4 h-[1px] bg-base-300 my-2"></div>
-          <div class="px-2 mt-2">
-            <ul class="space-y-0.5 knowledge-base-items">
-              {% for page in pages %}
-              <li
-                class="group relative"
-                x-data="{ showMenu: false }"
-                data-drop-zone
-                data-page-id="{{ page.pk }}"
-                ondragover="handleDragOver(event)"
-                ondragleave="handleDragLeave(event)"
-                ondrop="handleDrop(event)"
-              >
-                <div
-                  class="flex items-center rounded-lg transition-colors hover:bg-base-300 {% if page.pk == current_page.pk %}bg-base-300{% endif %}"
+                <a
+                  href="{% url 'page_detail' organization_pk=organization.pk pk=page.pk %}"
+                  class="flex-grow block px-3 py-1.5 text-sm cursor-move"
+                  draggable="true"
+                  ondragstart="handleDragStart(event)"
+                  ondragend="handleDragEnd(event)"
+                  data-page-id="{{ page.pk }}"
                 >
-                  <a
-                    href="{% url 'page_detail' organization_pk=organization.pk pk=page.pk %}"
-                    class="flex-grow block px-3 py-1.5 text-sm cursor-move"
-                    draggable="true"
-                    ondragstart="handleDragStart(event)"
-                    ondragend="handleDragEnd(event)"
-                    data-page-id="{{ page.pk }}"
-                  >
-                    <span>{{ page.title }}</span>
-                  </a>
-                  <div class="hidden group-hover:flex items-center pr-2">
-                    <!-- Add button -->
-                    <button class="p-1 hover:bg-base-content/10 rounded-lg">
+                  <span>{{ page.title }}</span>
+                </a>
+                <div class="hidden group-hover:flex items-center pr-2">
+                  <!-- Add button -->
+                  <button class="p-1 hover:bg-base-content/10 rounded-lg">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M12 4.5v15m7.5-7.5h-15"
+                      />
+                    </svg>
+                  </button>
+                  <!-- Menu button -->
+                  <div class="relative">
+                    <button
+                      @click="showMenu = !showMenu"
+                      class="p-1 hover:bg-base-content/10 rounded-lg"
+                    >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         class="h-4 w-4"
@@ -313,109 +372,204 @@
                         <path
                           stroke-linecap="round"
                           stroke-linejoin="round"
-                          d="M12 4.5v15m7.5-7.5h-15"
+                          d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z"
                         />
                       </svg>
                     </button>
-                    <!-- Menu button -->
-                    <div class="relative">
-                      <button
-                        @click="showMenu = !showMenu"
-                        class="p-1 hover:bg-base-content/10 rounded-lg"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          class="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
+                    <!-- Dropdown menu -->
+                    <div
+                      x-show="showMenu"
+                      @click.away="showMenu = false"
+                      x-transition:enter="transition ease-out duration-100"
+                      x-transition:enter-start="transform opacity-0 scale-95"
+                      x-transition:enter-end="transform opacity-100 scale-100"
+                      x-transition:leave="transition ease-in duration-75"
+                      x-transition:leave-start="transform opacity-100 scale-100"
+                      x-transition:leave-end="transform opacity-0 scale-95"
+                      class="absolute right-0 mt-2 w-48 rounded-lg shadow-lg bg-base-100 ring-1 ring-black ring-opacity-5 z-50"
+                    >
+                      <div class="py-1">
+                        <a
+                          href="{% url 'page_update' organization_pk=organization.pk pk=page.pk %}"
+                          class="block px-4 py-2 text-sm hover:bg-base-200"
                         >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z"
-                          />
-                        </svg>
-                      </button>
-                      <!-- Dropdown menu -->
-                      <div
-                        x-show="showMenu"
-                        @click.away="showMenu = false"
-                        x-transition:enter="transition ease-out duration-100"
-                        x-transition:enter-start="transform opacity-0 scale-95"
-                        x-transition:enter-end="transform opacity-100 scale-100"
-                        x-transition:leave="transition ease-in duration-75"
-                        x-transition:leave-start="transform opacity-100 scale-100"
-                        x-transition:leave-end="transform opacity-0 scale-95"
-                        class="absolute right-0 mt-2 w-48 rounded-lg shadow-lg bg-base-100 ring-1 ring-black ring-opacity-5 z-50"
-                      >
-                        <div class="py-1">
-                          <a
-                            href="{% url 'page_update' organization_pk=organization.pk pk=page.pk %}"
-                            class="block px-4 py-2 text-sm hover:bg-base-200"
-                          >
-                            Edit page
-                          </a>
-                          <a
-                            href="{% url 'page_delete' organization_pk=organization.pk pk=page.pk %}"
-                            class="block px-4 py-2 text-sm text-error hover:bg-base-200"
-                          >
-                            Delete page
-                          </a>
-                        </div>
+                          Edit page
+                        </a>
+                        <a
+                          href="{% url 'page_delete' organization_pk=organization.pk pk=page.pk %}"
+                          class="block px-4 py-2 text-sm text-error hover:bg-base-200"
+                        >
+                          Delete page
+                        </a>
                       </div>
                     </div>
                   </div>
                 </div>
+              </div>
 
-                <!-- Child pages container -->
-                {% if page.children.exists %}
-                <ul
-                  class="ml-4 mt-0.5 space-y-0.5"
-                  data-parent-id="{{ page.pk }}"
+              <!-- Child pages container -->
+              {% if page.children.exists %}
+              <ul
+                class="ml-4 mt-0.5 space-y-0.5"
+                data-parent-id="{{ page.pk }}"
+              >
+                {% for child in page.children.all %}
+                <li
+                  class="group relative"
+                  x-data="{ showMenu: false }"
+                  data-drop-zone
+                  data-page-id="{{ child.pk }}"
+                  ondragover="handleDragOver(event)"
+                  ondragleave="handleDragLeave(event)"
+                  ondrop="handleDrop(event)"
                 >
-                  {% for child in page.children.all %}
-                  <li
-                    class="group relative"
-                    x-data="{ showMenu: false }"
-                    data-drop-zone
-                    data-page-id="{{ child.pk }}"
-                    ondragover="handleDragOver(event)"
-                    ondragleave="handleDragLeave(event)"
-                    ondrop="handleDrop(event)"
+                  <!-- Similar structure as parent, but with child page data -->
+                  <div
+                    class="flex items-center rounded-lg transition-colors hover:bg-base-300 {% if child.pk == current_page.pk %}bg-base-300{% endif %}"
                   >
-                    <!-- Similar structure as parent, but with child page data -->
-                    <div
-                      class="flex items-center rounded-lg transition-colors hover:bg-base-300 {% if child.pk == current_page.pk %}bg-base-300{% endif %}"
+                    <a
+                      href="{% url 'page_detail' organization_pk=organization.pk pk=child.pk %}"
+                      class="flex-grow block px-3 py-1.5 text-sm cursor-move"
+                      draggable="true"
+                      ondragstart="handleDragStart(event)"
+                      ondragend="handleDragEnd(event)"
+                      data-page-id="{{ child.pk }}"
                     >
-                      <a
-                        href="{% url 'page_detail' organization_pk=organization.pk pk=child.pk %}"
-                        class="flex-grow block px-3 py-1.5 text-sm cursor-move"
-                        draggable="true"
-                        ondragstart="handleDragStart(event)"
-                        ondragend="handleDragEnd(event)"
-                        data-page-id="{{ child.pk }}"
-                      >
-                        <span>{{ child.title }}</span>
-                      </a>
-                      <!-- ... Child menu buttons ... -->
-                    </div>
-                  </li>
-                  {% endfor %}
-                </ul>
-                {% endif %}
-              </li>
-              {% endfor %}
-            </ul>
-          </div>
+                      <span>{{ child.title }}</span>
+                    </a>
+                    <!-- ... Child menu buttons ... -->
+                  </div>
+                </li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
         </div>
-      </nav>
+      </div>
     </aside>
 
     <!-- Content area -->
-    <div class="flex-1 bg-white overflow-y-auto">
+    <div class="flex-1 overflow-y-auto custom-scrollbar bg-white">
       {% block knowledge_content %}{% endblock %}
+    </div>
+
+    <!-- Chat Interface -->
+    <div
+      class="w-2/5 border-l flex flex-col"
+      x-data="chatInterface()"
+      x-init="initializeChat()"
+    >
+      <!-- Chat messages area - scrollable -->
+      <div class="flex-1 overflow-y-auto custom-scrollbar" x-ref="messagesContainer">
+        <div class="min-h-full flex flex-col justify-end">
+          <template x-for="message in messages" :key="message.id">
+            <!-- Message container -->
+            <div
+              class="flex px-4 py-8 sm:px-6"
+              :class="{ 'bg-base-200': message.message_type === 'ai' }"
+            >
+              <img
+                class="mr-2 flex h-8 w-8 rounded-full sm:mr-4"
+                :src="message.message_type === 'human' ? 'https://dummyimage.com/256x256/363536/ffffff&text=U' : 'https://dummyimage.com/256x256/354ea1/ffffff&text=A'"
+                :alt="message.message_type === 'human' ? 'User' : 'Assistant'"
+              />
+              <div class="flex w-full flex-col">
+                <p class="max-w-3xl" x-text="message.content"></p>
+                <template x-if="message.message_type === 'ai'">
+                  <div class="flex justify-end mt-4">
+                    <button class="text-base-content/50 hover:text-primary">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Chat input area - fixed at bottom -->
+      <div class="flex-none border-t">
+        <div class="p-4 bg-base-100">
+          <div class="relative">
+            <textarea
+              x-model="newMessage"
+              @keydown.enter.prevent="sendMessage()"
+              class="textarea w-full min-h-[4.5rem] bg-base-200 pr-12 border-none"
+              placeholder="Type your message here..."
+              rows="2"
+            ></textarea>
+            <div class="absolute bottom-2 left-2">
+              <button class="btn btn-ghost btn-sm">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div class="absolute bottom-2 right-2">
+              <button
+                @click="sendMessage()"
+                class="btn btn-ghost btn-sm"
+                :disabled="isLoading || !newMessage.trim()"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status footer -->
+        <div
+          class="px-4 py-2 bg-base-100 text-xs text-base-content/70 flex items-center justify-center gap-2"
+        >
+          <div
+            class="w-2 h-2 rounded-full"
+            :class="{'bg-success': !isLoading, 'bg-warning animate-pulse': isLoading}"
+          ></div>
+          <span
+            x-text="isLoading ? 'The agent is thinking...' : 'The agent is using the last version of Knowledge'"
+          ></span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -475,6 +629,151 @@
 </div>
 
 <script>
+  const chatInterface = () => ({
+    threadId: null,
+    messages: [],
+    newMessage: "",
+    isStreaming: false,
+    isLoading: false,
+    error: null,
+
+    async initializeChat() {
+      try {
+        const response = await fetchWithErrorHandling(
+          `${PROXY_SERVER_BASE_URL}/threads`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              contact_name: "Admin Chat",
+              contact_identifier: "admin",
+            }),
+          }
+        );
+        const data = await response.json();
+        this.threadId = data.thread_id;
+      } catch (err) {
+        console.error("Chat initialization error:", err);
+        this.error = err.message;
+      }
+    },
+
+    async sendMessage() {
+      if (!this.newMessage.trim()) return;
+      const userMessage = {
+        id: Date.now(),
+        message_type: "human",
+        content: this.newMessage,
+        timestamp: new Date().toLocaleTimeString(),
+      };
+      this.messages.push(userMessage);
+      const messageText = this.newMessage;
+      this.newMessage = "";
+      this.isLoading = true;
+      this.error = null;
+      this.scrollToBottom();
+
+      try {
+        const response = await fetchWithErrorHandling(
+          `${PROXY_SERVER_BASE_URL}/threads/${this.threadId}/messages`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              message_type: "human",
+              content: [{ type: "text", text: messageText }],
+            }),
+          }
+        );
+        await response.json();
+        await this.startStreaming();
+      } catch (err) {
+        console.error("Send message error:", err);
+        this.error = err.message;
+      } finally {
+        this.isLoading = false;
+      }
+    },
+
+    async startStreaming() {
+      try {
+        this.isStreaming = true;
+        const response = await fetchWithErrorHandling(
+          `${PROXY_SERVER_BASE_URL}/threads/${this.threadId}/run`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              agent_version: "{{ selected_version_slug }}",
+            }),
+          }
+        );
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete messages
+          while (true) {
+            const newlineIndex = buffer.indexOf('\n');
+            if (newlineIndex === -1) break;
+            
+            const line = buffer.slice(0, newlineIndex).trim();
+            buffer = buffer.slice(newlineIndex + 1);
+            
+            if (line.startsWith('data: ')) {
+              try {
+                const jsonData = line.slice(6); // Remove 'data: ' prefix
+                const parsed = JSON.parse(jsonData);
+                
+                // Process each complete message that should be sent
+                if (parsed.should_send && parsed.message) {
+                  // Collect all text content from the message
+                  const textContent = parsed.message.content
+                    .filter(item => item.type === "text")
+                    .map(item => item.text)
+                    .join("");
+                    
+                  if (textContent) {
+                    // Create a new message for each complete response
+                    const newMessage = {
+                      id: Date.now() + Math.random(),
+                      message_type: parsed.message.message_type,
+                      content: textContent,
+                      timestamp: new Date().toLocaleTimeString(),
+                    };
+                    this.messages.push(newMessage);
+                    this.scrollToBottom();
+                  }
+                }
+              } catch (e) {
+                console.error("Stream parse error", e);
+              }
+            }
+          }
+        }
+        
+        this.isStreaming = false;
+        this.scrollToBottom();
+      } catch (err) {
+        this.error = "Stream error: " + err.message;
+        this.isStreaming = false;
+      }
+    },
+
+    scrollToBottom() {
+      this.$nextTick(() => {
+        const container = this.$refs.messagesContainer;
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
+      });
+    },
+  });
+
   function createNewPage() {
     const version = document.querySelector(
       'meta[name="selected-version"]'

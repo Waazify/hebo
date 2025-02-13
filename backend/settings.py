@@ -102,6 +102,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.organization_context",
                 "core.context_processors.knowledge_context",
+                "core.context_processors.proxy_context",
             ],
         },
     },
@@ -123,6 +124,9 @@ DATABASES = {
         "PORT": os.getenv("POSTGRES_PORT", "5432"),
     }
 }
+
+# Proxy server
+PROXY_SERVER_BASE_URL = os.getenv("PROXY_SERVER_BASE_URL", "http://localhost:80")
 
 
 # Password validation

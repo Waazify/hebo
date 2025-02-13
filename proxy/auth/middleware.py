@@ -6,6 +6,11 @@ from datetime import datetime
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+
+        # Skip authentication for preflight requests.
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Skip authentication for health check endpoints if needed
         if request.url.path == "/health":
             return await call_next(request)

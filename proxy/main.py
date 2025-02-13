@@ -80,8 +80,8 @@ async def lifespan(app: FastAPI):
     app.state.task_tracker = TaskTracker()
 
     # Set up signal handlers for graceful shutdown
-    # for sig in (signal.SIGTERM, signal.SIGINT):
-    #     signal.signal(sig, handle_shutdown_signal)
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, handle_shutdown_signal)
 
     logger.info(HEBO)
     logger.info("Application startup complete v%s", __version__)
@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         logger.info("Lifespan context manager is closing")
-    #     await graceful_shutdown(app)
+        await graceful_shutdown(app)
 
 
 app = FastAPI(
@@ -111,7 +111,7 @@ app.add_middleware(
 
 # Add API Key middleware before TaskTracker middleware
 app.add_middleware(APIKeyMiddleware)
-# app.add_middleware(TaskTrackerMiddleware)
+app.add_middleware(TaskTrackerMiddleware)
 
 
 @app.post("/threads", response_model=CreateThreadResponse)
