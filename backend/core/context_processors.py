@@ -107,6 +107,12 @@ def knowledge_context(request):
 
 
 def proxy_context(request):
+    if not request.user.is_authenticated:
+        return {
+            "PROXY_SERVER_BASE_URL": settings.PROXY_SERVER_BASE_URL,
+            "PROXY_SERVER_API_KEY": None,
+        }
+
     """Add proxy server URL to template context."""
     org_user = OrganizationUser.objects.filter(user=request.user).first()
     if org_user:

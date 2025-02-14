@@ -1,5 +1,8 @@
 from django import forms
 from .models import LLMAdapter, AgentSetting
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class LLMAdapterForm(forms.ModelForm):
@@ -21,6 +24,7 @@ class LLMAdapterForm(forms.ModelForm):
 
     def __init__(self, *args, organization=None, **kwargs):
         self.organization = organization
+        logger.debug("LLMAdapterForm.__init__: Received organization: %s", self.organization)
         super().__init__(*args, **kwargs)
 
         # Make aws fields are required only for Bedrock provider
@@ -48,10 +52,12 @@ class LLMAdapterForm(forms.ModelForm):
         cleaned_data = super().clean()
 
         if not self.organization:
+            logger.error("LLMAdapterForm.clean: Organization is missing.")
             raise forms.ValidationError("Organization is required")
 
         # Set the organization on the instance during validation
         self.instance.organization = self.organization
+        logger.debug("LLMAdapterForm.clean: Cleaned data: %s", cleaned_data)
 
         return cleaned_data
 
@@ -63,6 +69,7 @@ class LLMAdapterForm(forms.ModelForm):
 
         if commit:
             instance.save()
+        logger.info("LLMAdapterForm.save: Saved adapter: %s", instance)
         return instance
 
 

@@ -1,11 +1,7 @@
 import asyncio
 import logging
-import os
 import signal
-import sys
 from contextlib import asynccontextmanager
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import asyncpg
 from fastapi import FastAPI, Request, HTTPException

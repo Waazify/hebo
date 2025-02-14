@@ -8,11 +8,15 @@ from django.views.generic import (
 )
 from django.contrib import messages
 from django.db import models
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseNotAllowed
+import logging
 
 from core.mixins import OrganizationPermissionMixin
 from .models import AgentSetting, Tool, LLMAdapter
 from .forms import LLMAdapterForm, AgentSettingForm
+
+# Configure a logger for this module
+logger = logging.getLogger(__name__)
 
 
 class AgentSettingUpdateView(
@@ -124,26 +128,33 @@ class LLMAdapterListView(LoginRequiredMixin, OrganizationPermissionMixin, ListVi
 class LLMAdapterCreateView(LoginRequiredMixin, OrganizationPermissionMixin, CreateView):
     model = LLMAdapter
     form_class = LLMAdapterForm
+    http_method_names = ["post"]
+
+    def get(self, request, *args, **kwargs):
+        # Log an error if a GET request is made
+        logger.error("GET request received on LLMAdapterCreateView; only POST is allowed.")
+        return HttpResponseNotAllowed(["POST"])
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
+        logger.debug("LLMAdapterCreateView.get_form_kwargs: Setting organization: %s", self.organization)
         kwargs["organization"] = self.organization
         return kwargs
 
     def form_valid(self, form):
         try:
             self.object = form.save()
-            return JsonResponse(
-                {
-                    "status": "success",
-                    "adapter": {
-                        "id": self.object.id,
-                        "name": self.object.name,
-                        "is_default": self.object.is_default,
-                    },
-                }
-            )
+            logger.info("LLMAdapterCreateView.form_valid: Successfully created adapter: %s", self.object)
+            return JsonResponse({
+                "status": "success",
+                "adapter": {
+                    "id": self.object.id,
+                    "name": self.object.name,
+                    "is_default": self.object.is_default,
+                },
+            })
         except Exception as e:
+            logger.exception("LLMAdapterCreateView.form_valid: Exception while saving form: %s", e)
             return JsonResponse(
                 {
                     "status": "error",
@@ -151,6 +162,14 @@ class LLMAdapterCreateView(LoginRequiredMixin, OrganizationPermissionMixin, Crea
                 },
                 status=400,
             )
+
+    def form_invalid(self, form):
+        # Log the form errors to help debug why validation failed
+        logger.error("LLMAdapterCreateView.form_invalid: Form errors: %s", form.errors)
+        return JsonResponse(
+            {"status": "error", "errors": form.errors},
+            status=400,
+        )
 
 
 class LLMAdapterDeleteView(LoginRequiredMixin, OrganizationPermissionMixin, DeleteView):
