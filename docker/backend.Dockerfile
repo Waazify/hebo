@@ -4,6 +4,8 @@ FROM python:3.13-rc-slim AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -26,11 +28,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Copy the project
 COPY backend .
 
+# Build static assets during build phase
+RUN npm install && npm run build
+
 # Runtime stage
 FROM python:3.13-rc-slim
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends libpq5 nodejs npm && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
 RUN useradd -m -u 1000 app
@@ -42,19 +47,6 @@ COPY --from=builder --chown=app:app /usr/local /usr/local
 # Set environment variables
 ENV PYTHONPATH="/app:$PYTHONPATH"
 ENV DJANGO_SETTINGS_MODULE="settings"
-
-# Copy entrypoint script
-COPY docker/entrypoint.sh /entrypoint.sh
-
-# Run chmod as root
-RUN chmod +x /entrypoint.sh
-
-# Switch to non-root user
-USER app
-WORKDIR /app
-
-# Set entrypoint
-ENTRYPOINT ["/entrypoint.sh"]
 
 # Run migrations and collect static files at startup
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "core.wsgi:application"] 

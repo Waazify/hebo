@@ -29,6 +29,11 @@ services:
       - redis
     networks:
       - hebo_network
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             python manage.py check_create_superuser &&
+             gunicorn --bind 0.0.0.0:8000 core.wsgi:application"
 
   proxy:
     build:
