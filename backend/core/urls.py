@@ -17,11 +17,12 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
-from core.views import home
+from core.views import home, health_check
 from schema_graph.views import Schema
 
 urlpatterns = [
     path("", home, name="home"),
+    path("health", health_check, name="health_check"),
     path("admin/", admin.site.urls),
     path("accounts/", include("allauth.urls")),
     path("schema/", Schema.as_view()),

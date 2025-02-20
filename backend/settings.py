@@ -39,6 +39,9 @@ ALLOWED_HOSTS = [
     '[::1]',  # IPv6 localhost
 ]
 
+# URL Configuration
+APPEND_SLASH = False
+
 
 # Application definition
 APP_VERSION = __version__

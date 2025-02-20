@@ -14,6 +14,7 @@ from config import settings
 from db.database import wait_for_database_connection
 from services import HEBO
 from services.middleware import TaskTracker, TaskTrackerMiddleware
+from schemas.server import HealthResponse
 from schemas.threads import (
     AddMessageRequest,
     AddMessageResponse,
@@ -108,6 +109,26 @@ app.add_middleware(
 # Add API Key middleware before TaskTracker middleware
 app.add_middleware(APIKeyMiddleware)
 app.add_middleware(TaskTrackerMiddleware)
+
+
+@app.get("/health", response_model=HealthResponse, tags=["monitoring"])
+async def health_check(request: Request):
+    """Check the health of the application and its dependencies."""
+    try:
+        # Test database connection
+        async with app.state.db_pool.acquire() as conn:
+            await conn.execute("SELECT 1")
+            db_status = "healthy"
+    except Exception as e:
+        logger.error(f"Database health check failed: {str(e)}")
+        db_status = "unhealthy"
+        raise HTTPException(status_code=503, detail="Database connection failed")
+
+    return HealthResponse(
+        status="healthy",
+        version=__version__,
+        database=db_status
+    )
 
 
 @app.post("/threads", response_model=CreateThreadResponse)
