@@ -97,12 +97,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS
+# Configure CORS based on environment
+origins = ["https://app.hebo.ai"]  # Production origins
+if settings.TARGET_ENV != "prod":
+    # Allow all origins in non-production environments
+    origins = ["*"]
+elif settings.ADDITIONAL_CORS_ORIGINS:
+    # Add any additional allowed origins from environment settings
+    origins.extend(settings.ADDITIONAL_CORS_ORIGINS)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure this appropriately for production
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 

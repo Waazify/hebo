@@ -28,16 +28,31 @@ BASE_DIR = Path(__file__).resolve().parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-=ibyr05)sx($7nm#mz_4*s#6%n0w6gmq8er=1-=e(o1zhu%1r4"
+SECRET_KEY = os.getenv(
+    "SECRET_KEY", "django-insecure-=ibyr05)sx($7nm#mz_4*s#6%n0w6gmq8er=1-=e(o1zhu%1r4"
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-    '[::1]',  # IPv6 localhost
-]
+TARGET_ENV = os.getenv("TARGET_ENV", "dev")
+
+# Handle allowed hosts based on environment
+ALLOWED_HOSTS = ["app.hebo.ai"]  # Production default
+
+if TARGET_ENV != "prod":
+    # In development, allow localhost and common development hosts
+    ALLOWED_HOSTS.extend(
+        [
+            "localhost",
+            "127.0.0.1",
+            "[::1]",  # IPv6 localhost
+        ]
+    )
+
+# Add any additional hosts from environment variable
+additional_hosts = os.getenv("ADDITIONAL_ALLOWED_HOSTS", "").split(",")
+ALLOWED_HOSTS.extend([host.strip() for host in additional_hosts if host.strip()])
 
 # URL Configuration
 APPEND_SLASH = False
@@ -261,16 +276,16 @@ DJSTRIPE_WEBHOOK_SECRET = "whsec_xxx"  # Get it from the section in the Stripe d
 DJSTRIPE_FOREIGN_KEY_TO_FIELD = "id"
 
 LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'stream': sys.stdout,
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "stream": sys.stdout,
         },
     },
-    'root': {
-        'handlers': ['console'],
-        'level': 'ERROR',
+    "root": {
+        "handlers": ["console"],
+        "level": "ERROR",
     },
 }

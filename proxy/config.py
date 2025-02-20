@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # General settings
     ARTIFICIAL_DELAY_DURATION: int = 10
     MAX_RECURSION_DEPTH: int = 5
+
+    # CORS settings
+    ADDITIONAL_CORS_ORIGINS: list[str] = []
+
     class Config:
         env_file = ".env"
         case_sensitive = True
