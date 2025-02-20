@@ -13,6 +13,6 @@ jobs:
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.DEPLOY_PAT }}
-          repository: your-org/deployment-repo
+          repository: heboai/deployment-repo
           event-type: app-deploy
           client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
