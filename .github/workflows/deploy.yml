@@ -1,0 +1,18 @@
+name: Deploy Application
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  trigger-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Deployment Workflow
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.DEPLOY_PAT }}
+          repository: your-org/deployment-repo
+          event-type: app-deploy
+          client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
