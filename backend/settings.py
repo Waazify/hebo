@@ -38,7 +38,7 @@ DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 TARGET_ENV = os.getenv("TARGET_ENV", "dev")
 
 # Handle allowed hosts based on environment
-ALLOWED_HOSTS = ["app.hebo.ai"]  # Production default
+ALLOWED_HOSTS = []
 
 if TARGET_ENV != "prod":
     # In development, allow localhost and common development hosts

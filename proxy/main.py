@@ -98,7 +98,7 @@ app = FastAPI(
 )
 
 # Configure CORS based on environment
-origins = ["https://app.hebo.ai"]  # Production origins
+origins = []
 if settings.TARGET_ENV != "prod":
     # Allow all origins in non-production environments
     origins = ["*"]
