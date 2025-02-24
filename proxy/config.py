@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -25,6 +26,17 @@ class Settings(BaseSettings):
 
     # CORS settings
     ADDITIONAL_CORS_ORIGINS: list[str] = []
+
+    @field_validator("ADDITIONAL_CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            # Handle empty string case
+            if not v.strip():
+                return []
+            # Split and clean the origins
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v or []  # Return empty list if v is None
 
     class Config:
         env_file = ".env"

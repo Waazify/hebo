@@ -32,7 +32,7 @@ class LLMAdapter(BaseModel):
     aws_secret_access_key: Optional[str] = Field(default=None, max_length=255)
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class Tool(BaseModel):
@@ -48,7 +48,7 @@ class Tool(BaseModel):
     query: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class AgentSetting(BaseModel):
@@ -64,4 +64,4 @@ class AgentSetting(BaseModel):
     tools: List[Tool] = []
 
     class Config:
-        orm_mode = True
+        from_attributes = True

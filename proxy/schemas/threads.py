@@ -15,7 +15,7 @@ class Thread(BaseModel):
     contact_identifier: Optional[str] = Field(default=None, max_length=100)
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class MessageContentType(Enum):
@@ -91,7 +91,7 @@ class Message(BaseMessage):
     tool_call_id: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
         validate_assignment = True  # Enable validation on assignment
         ignored_types = (type(None),)  # Handle None values
 
@@ -103,7 +103,7 @@ class Summary(BaseModel):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class CreateThreadRequest(BaseModel):

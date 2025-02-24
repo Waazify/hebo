@@ -16,7 +16,7 @@ class Page(BaseModel):
     parent_id: Optional[int] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class ContentType(Enum):
@@ -56,7 +56,7 @@ class Part(BaseModel):
         return value
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class Vector(BaseModel):
@@ -86,4 +86,4 @@ class Vector(BaseModel):
         return value
 
     class Config:
-        orm_mode = True
+        from_attributes = True
