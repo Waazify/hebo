@@ -2,10 +2,13 @@
 set -e
 
 echo "Running migrations..."
-python manage.py migrate
+python /app/manage.py migrate
 
 echo "Collecting static files..."
-python manage.py collectstatic --noinput
+python /app/manage.py collectstatic --noinput
+
+echo "Checking and creating superuser if necessary..."
+python /app/manage.py check_create_superuser
 
 echo "Starting application..."
 exec "$@" 
