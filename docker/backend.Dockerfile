@@ -31,6 +31,9 @@ COPY backend .
 # Build static assets during build phase
 RUN npm install && npm run build
 
+# Create and set ownership of the static directory
+RUN mkdir -p /app/staticfiles && chown -R app:app /app/staticfiles
+
 # Runtime stage
 FROM python:3.13-rc-slim
 
