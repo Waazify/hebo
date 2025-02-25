@@ -54,6 +54,13 @@ if TARGET_ENV != "prod":
 additional_hosts = os.getenv("ADDITIONAL_ALLOWED_HOSTS", "").split(",")
 ALLOWED_HOSTS.extend([host.strip() for host in additional_hosts if host.strip()])
 
+# CSRF settings
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ADDITIONAL_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
 # URL Configuration
 APPEND_SLASH = False
 
