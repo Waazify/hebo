@@ -9,17 +9,7 @@ mkdir -p /app/staticfiles
 chmod -R 777 /app/staticfiles
 
 echo "Collecting static files..."
-python /app/manage.py collectstatic --noinput --verbosity 2 || {
-  echo "Static file collection failed with exit code $?"
-  echo "Current directory structure:"
-  find /app -type d | sort
-  echo "Static files directory contents:"
-  ls -la /app/staticfiles
-  exit 1
-}
-
-echo "Verifying static files..."
-ls -la /app/staticfiles
+python /app/manage.py collectstatic --noinput
 
 echo "Checking and creating superuser if necessary..."
 python /app/manage.py check_create_superuser
