@@ -31,6 +31,9 @@ COPY backend .
 # Build static assets during build phase
 RUN npm install && npm run build
 
+# Create a non-root user
+RUN useradd -m -u 1000 app
+
 # Create and set ownership of the static directory
 RUN mkdir -p /app/staticfiles && chown -R app:app /app/staticfiles
 
@@ -39,9 +42,6 @@ FROM python:3.13-rc-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends libpq5 && rm -rf /var/lib/apt/lists/*
-
-# Create a non-root user
-RUN useradd -m -u 1000 app
 
 # Copy project files and Python packages from builder
 COPY --from=builder --chown=app:app /app /app
