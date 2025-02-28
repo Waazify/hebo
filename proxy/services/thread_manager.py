@@ -237,15 +237,10 @@ class ThreadManager:
 
             # Retrieve relevant context
             context = await retriever.get_relevant_sources(llm_conversation, session)
-            behaviour_part_ids = await self.db.get_behaviour_part_ids(
+            behaviour_parts = await self.db.get_behaviour_parts(
                 agent_settings.version_id, organization_id
             )
-            behaviour_parts = []
-            for id in behaviour_part_ids:
-                part = await self.vectorstore.find_by_id(id)
-                if part:
-                    behaviour_parts.append(part)
-            behaviour_parts = "\n\n".join([part.content for part in behaviour_parts])
+            behaviour = "\n\n".join([part["content"] for part in behaviour_parts])
 
             logger.info("conversation has %s messages", len(llm_conversation))
             logger.info("process conversation with LLM")
@@ -260,7 +255,7 @@ class ThreadManager:
             for reply in execute_conversation(
                 agent_settings_or_llm=agent_settings,
                 conversation=llm_conversation,
-                behaviour=behaviour_parts,
+                behaviour=behaviour,
                 context=context,
                 session=session,
             ):

@@ -219,13 +219,12 @@ class DB:
         )
 
     @db_operation
-    async def get_behaviour_part_ids(
+    async def get_behaviour_parts(
         self, version_id: int, organization_id: str
-    ) -> List[int]:
-        """Get all behaviour part ids for a version, ordered by page hierarchy and part position"""
+    ) -> List[dict]:
+        """Get all behaviour parts for a version, ordered by page hierarchy and part position."""
         query = """
             WITH RECURSIVE page_hierarchy AS (
-                -- Get root level pages
                 SELECT id, parent_id, position,
                        ARRAY[position] as path
                 FROM knowledge_page
@@ -241,7 +240,7 @@ class DB:
                 FROM knowledge_page c
                 JOIN page_hierarchy ph ON c.parent_id = ph.id
             )
-            SELECT p.id
+            SELECT p.id, p.start_line, p.end_line, pg.content
             FROM knowledge_part p
             JOIN knowledge_page pg ON p.page_id = pg.id
             JOIN page_hierarchy ph ON pg.id = ph.id
@@ -249,10 +248,18 @@ class DB:
               AND pg.organization_id = $2
               AND p.content_type = 'behaviour'
               AND p.is_valid = true
-            ORDER BY ph.path, p.start_line
+            ORDER BY ph.path, p.start_line, p.end_line
         """
         rows = await self.conn.fetch(query, version_id, organization_id)
-        return [row["id"] for row in rows]
+        parts = []
+        for row in rows:
+            content_lines = row['content'].splitlines()
+            content = "\n".join(content_lines[row['start_line']:row['end_line']+1])
+            parts.append({
+                "id": row["id"],
+                "content": content
+            })
+        return parts
 
     @db_operation
     async def create_run(self, run: Run) -> int:
