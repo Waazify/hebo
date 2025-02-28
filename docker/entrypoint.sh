@@ -15,4 +15,4 @@ echo "Checking and creating superuser if necessary..."
 python /app/manage.py check_create_superuser
 
 echo "Starting application..."
-exec "$@" 
+exec "$@"
