@@ -163,7 +163,7 @@ class DB:
                 s.id, s.organization_id, s.version_id, s.delay, s.hide_tool_messages,
                 s.core_llm_id, s.condense_llm_id, s.vision_llm_id, s.embeddings_id
             FROM agent_settings_agentsetting s
-            JOIN versions_versionslug vs ON vs.version_id = s.version_id 
+            JOIN versions_versionslug vs ON vs.version_id = s.version_id
             JOIN versions_version v ON v.id = s.version_id
             WHERE vs.slug = $1 AND s.organization_id = $2
             LIMIT 1

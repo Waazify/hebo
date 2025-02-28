@@ -62,15 +62,13 @@ class Agent(models.Model):
 
             # Check if the slug exists
             if (
-                AgentSlug.objects.filter(
-                    agent__organization=self.organization, slug=new_slug
-                )
+                AgentSlug.objects.filter(slug=new_slug)
                 .exclude(agent=self if not is_new else None)
                 .exists()
             ):
                 # Get all similar slugs
                 similar_slugs = AgentSlug.objects.filter(
-                    agent__organization=self.organization, slug__startswith=new_slug
+                    slug__startswith=new_slug
                 ).values_list("slug", flat=True)
 
                 # Find the next available number
@@ -148,10 +146,13 @@ class AgentSlug(models.Model):
     def clean(self):
         """Ensure slug uniqueness within organization"""
         super().clean()
-        if AgentSlug.objects.filter(
-            agent__organization=self.agent.organization,
-            slug=self.slug
-        ).exclude(agent=self.agent).exists():
+        if (
+            AgentSlug.objects.filter(
+                agent__organization=self.agent.organization, slug=self.slug
+            )
+            .exclude(agent=self.agent)
+            .exists()
+        ):
             raise ValidationError(
                 _("This slug is already in use within this organization.")
             )
@@ -355,15 +356,14 @@ class Version(models.Model):
                     version=self, slug=f"{agent_slug}:next"
                 )
 
-    def duplicate_from(self, source_version: Optional['Version'] = None) -> None:
+    def duplicate_from(self, source_version: Optional["Version"] = None) -> None:
         """
         Duplicates related models from source version to this version.
         If source_version is None, tries to find the current version of the same agent.
         """
         if not source_version:
             source_version = Version.objects.filter(
-                agent=self.agent,
-                status=self.Status.CURRENT
+                agent=self.agent, status=self.Status.CURRENT
             ).first()
 
         if not source_version:
@@ -378,7 +378,7 @@ class Version(models.Model):
         # Duplicate pages with their parts and vectors
         self._duplicate_pages(source_version)
 
-    def _duplicate_agent_settings(self, source_version: 'Version') -> None:
+    def _duplicate_agent_settings(self, source_version: "Version") -> None:
         """Helper method to duplicate agent settings and tools."""
         from agent_settings.models import AgentSetting
 
@@ -402,7 +402,7 @@ class Version(models.Model):
                 tool.agent_setting = new_settings
                 tool.save()
 
-    def _duplicate_pages(self, source_version: 'Version') -> None:
+    def _duplicate_pages(self, source_version: "Version") -> None:
         """Helper method to duplicate pages, parts, and vectors."""
         from knowledge.models import Page
 
@@ -416,7 +416,7 @@ class Version(models.Model):
                     content=old_page.content,
                     is_published=old_page.is_published,
                     position=old_page.position,
-                    parent=None  # We'll update this after all pages are created
+                    parent=None,  # We'll update this after all pages are created
                 )
                 new_page._skip_part_generation = True
                 new_page.save()
@@ -460,6 +460,27 @@ class VersionSlug(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["version", "slug"],
+                name="unique_version_slug_per_organization",
+            )
+        ]
+
+    def clean(self):
+        """Ensure version-slug uniqueness within organization"""
+        super().clean()
+        if (
+            VersionSlug.objects.filter(
+                version__agent__organization=self.version.agent.organization,
+                slug=self.slug,
+            )
+            .exclude(version=self.version)
+            .exists()
+        ):
+            raise ValidationError(
+                _("This version slug is already in use within this organization.")
+            )
 
     def __str__(self):
         return self.slug
@@ -472,16 +493,11 @@ def create_initial_version(sender, instance, created, **kwargs):
     """
     if created:
         version = Version.objects.create(
-            agent=instance,
-            name="v1",
-            status=Version.Status.NEXT
+            agent=instance, name="v1", status=Version.Status.NEXT
         )
         # The initial_version_created signal will trigger creation of default settings
         initial_version_created.send(
-            sender=sender,
-            created=True,
-            agent=instance,
-            version=version
+            sender=sender, created=True, agent=instance, version=version
         )
 
 

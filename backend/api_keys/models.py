@@ -55,7 +55,7 @@ class APIKey(models.Model):
 
 
 @receiver(post_save, sender=Organization)
-def create_initial_agent(sender, instance, created, **kwargs):
+def create_initial_api_keys(sender, instance, created, **kwargs):
     """
     Signal handler to create a first API key when a new Organization is created.
     """
