@@ -4,17 +4,6 @@
 <!-- Move the form outside the Alpine.js scope -->
 <form method="POST" action="{% url 'agent_setting_update' organization_pk=organization.pk %}" class="max-w-3xl mx-auto py-20 px-12">
     {% csrf_token %}
-    
-    <!-- Show messages -->
-    {% if messages %}
-    <div class="mb-8">
-        {% for message in messages %}
-        <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-error{% endif %}">
-            {{ message }}
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
 
     <div x-data="{ 
         showActionModal: false,
