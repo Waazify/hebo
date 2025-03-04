@@ -1,18 +1,18 @@
+import uuid
+
 from django.db import models
 from django.urls import reverse
 from django.contrib.sites.models import Site
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.contrib.auth import get_user_model
-
+from djstripe.models import Customer
 from organizations.models import (
     AbstractOrganization,
     AbstractOrganizationUser,
     AbstractOrganizationOwner,
     AbstractOrganizationInvitation,
 )
-from djstripe.models import Customer
-import uuid
 
 
 def generate_org_id():
@@ -22,10 +22,9 @@ def generate_org_id():
 
 class Organization(AbstractOrganization):
     """
-    Custom organization model with a UUID primary key and Stripe integration.
+    Custom organization model with a string primary key and Stripe integration.
     """
 
-    # Override the id field from the parent model
     id = models.CharField(
         primary_key=True,
         default=generate_org_id,
