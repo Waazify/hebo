@@ -17,13 +17,14 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
-from core.views import home, health_check
+from core.views import home, health_check, CustomSignupView
 from schema_graph.views import Schema
 
 urlpatterns = [
     path("", home, name="home"),
     path("health", health_check, name="health_check"),
     path("admin/", admin.site.urls),
+    path("accounts/signup/", CustomSignupView.as_view(), name="account_signup"),
     path("accounts/", include("allauth.urls")),
     path("schema/", Schema.as_view()),
     path("stripe/", include("djstripe.urls", namespace="djstripe")),

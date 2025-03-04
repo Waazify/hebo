@@ -22,4 +22,40 @@ urlpatterns = [
         views.OrganizationSettingsView.as_view(),
         name="organization_settings_base",
     ),
+    path(
+        "<str:organization_pk>/members/",
+        views.OrganizationMembersView.as_view(),
+        name="organization_members",
+    ),
+    path(
+        "<str:organization_pk>/members/<int:member_id>/update/",
+        views.OrganizationMemberUpdateView.as_view(),
+        name="organization_member_update",
+    ),
+    path(
+        "<str:organization_pk>/members/<int:member_id>/remove/",
+        views.OrganizationMemberRemoveView.as_view(),
+        name="organization_member_remove",
+    ),
+    path(
+        "<str:organization_pk>/invitations/",
+        views.OrganizationInvitationsView.as_view(),
+        name="organization_invitations",
+    ),
+    path(
+        "<str:organization_pk>/invitations/send/",
+        views.OrganizationInvitationSendView.as_view(),
+        name="organization_invitation_send",
+    ),
+    path(
+        "<str:organization_pk>/invitations/<int:invitation_id>/cancel/",
+        views.OrganizationInvitationCancelView.as_view(),
+        name="organization_invitation_cancel",
+    ),
+    # Invitation acceptance URL
+    path(
+        "invitations/<int:invitation_id>/accept/",
+        views.OrganizationInvitationAcceptView.as_view(),
+        name="organization_invitation_accept",
+    ),
 ]

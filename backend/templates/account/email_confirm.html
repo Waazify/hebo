@@ -1,0 +1,68 @@
+<!-- templates/account/email_confirm.html -->
+{% extends "base.html" %}
+
+{% load i18n %}
+{% load account %}
+
+{% block content %}
+<div class="hero min-h-screen bg-base-100">
+    <div class="hero-content flex-col lg:flex-row-reverse">
+        <div class="text-center lg:text-left">
+            <h1 class="text-5xl font-bold">{% if confirmation %}Confirm Email{% else %}Invalid Link{% endif %}</h1>
+            <p class="py-6">
+            {% if confirmation %}
+                Please confirm that <strong>{{ confirmation.email_address.email }}</strong> is your email address by clicking the button below.
+            {% else %}
+                This confirmation link is invalid or has already been used. Please request a new confirmation email if needed.
+            {% endif %}
+            </p>
+        </div>
+        <div class="card flex-shrink-0 w-full max-w-sm shadow-2xl bg-base-100">
+            <div class="card-body">
+                {% if confirmation %}
+                    <div class="alert alert-info mb-6">
+                        <div>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span>Email: {{ confirmation.email_address.email }}</span>
+                        </div>
+                    </div>
+                    <form method="post" action="{% url 'account_confirm_email' confirmation.key %}">
+                        {% csrf_token %}
+                        <div class="form-control mt-6">
+                            <button type="submit" class="btn btn-primary">Confirm Email Address</button>
+                        </div>
+                    </form>
+                {% else %}
+                    <div class="alert alert-error mb-6">
+                        <div>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span>The confirmation link was invalid or has expired.</span>
+                        </div>
+                    </div>
+                {% endif %}
+                
+                <div class="text-sm text-center mt-4">
+                    <p>Please contact us if you have any trouble confirming your email address.</p>
+                </div>
+                
+                <div class="divider text-xs text-gray-500">or</div>
+                
+                <div class="flex flex-col gap-2">
+                    {% if confirmation %}
+                        <a href="{% url 'account_email' %}" class="btn btn-outline btn-sm">
+                            Manage Email Addresses
+                        </a>
+                    {% else %}
+                        <a href="{% url 'account_email' %}" class="btn btn-primary btn-sm">
+                            Request New Confirmation Email
+                        </a>
+                    {% endif %}
+                    <a href="{% url 'account_login' %}" class="btn btn-outline btn-sm">
+                        Return to Login
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
