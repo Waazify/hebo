@@ -38,7 +38,7 @@ exclude = [
 
 # Select and ignore specific rules
 select = ["E", "F", "W", "N"]
-ignore = ["E501", "E203"]
+ignore = ["E501", "E203", "N806"]
 
 # Allow unused variables when underscore-prefixed
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"

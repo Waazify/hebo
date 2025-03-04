@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Invitation to Join {{ organization.name }}</title>
+    <style>
+      body {
+        font-family: "Inter", Arial, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .header {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .content {
+        background-color: #f9f9f9;
+        padding: 20px;
+        border-radius: 5px;
+      }
+      .button {
+        display: inline-block;
+        background-color: #570df8;
+        color: white;
+        padding: 10px 20px;
+        text-decoration: none;
+        border-radius: 5px;
+        margin-top: 15px;
+      }
+      .footer {
+        margin-top: 20px;
+        font-size: 12px;
+        color: #666;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h2>You've been invited to join {{ organization.name }}</h2>
+    </div>
+
+    <div class="content">
+      <p>Hello,</p>
+
+      <p>
+        {{ invited_by.get_full_name|default:invited_by.username }} has invited
+        you to join {{ organization.name }} on Hebo.
+      </p>
+
+      {% if user %}
+      <p>To accept this invitation, simply click the button below:</p>
+
+      <div style="text-align: center">
+        <a href="{{ accept_url }}" class="button">Accept Invitation</a>
+      </div>
+      {% else %}
+      <p>
+        You'll need to create an account to join this organization. Click the
+        button below to register and accept the invitation:
+      </p>
+
+      <div style="text-align: center">
+        <a href="{{ register_url }}" class="button">Register & Accept</a>
+      </div>
+      {% endif %}
+
+      <p style="margin-top: 20px">
+        If you didn't expect this invitation, you can safely ignore this email.
+      </p>
+    </div>
+
+    <div class="footer">
+      <p>
+        This invitation was sent to {{ email }}. If you have questions, please
+        contact support@hebo.ai
+      </p>
+    </div>
+  </body>
+</html>
