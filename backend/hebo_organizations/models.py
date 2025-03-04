@@ -1,11 +1,11 @@
 import uuid
 
-from django.db import models
-from django.urls import reverse
+from django.contrib.auth import get_user_model
 from django.contrib.sites.models import Site
 from django.core.mail import EmailMultiAlternatives
+from django.db import models
 from django.template.loader import render_to_string
-from django.contrib.auth import get_user_model
+from django.urls import reverse
 from djstripe.models import Customer
 from organizations.models import (
     AbstractOrganization,
