@@ -37,20 +37,20 @@ Thank you for your interest in contributing to Hebo AI! We're excited to have yo
 - Look for issues labeled `good first issue` if you're new to the project
 - Comment on the issue to express your interest before starting work
 
-### 2. Creating a Branch
+### 2. Creating a Branch in Your Fork
 
-- Ensure your local `develop` branch is up to date:
-  ```bash
-  git checkout develop
-  git pull upstream develop
-  ```
-- Create a new branch with a descriptive name that references the issue number:
+- Create a branch in your fork with a descriptive name that references the issue number:
   ```bash
   git checkout -b feature/issue-123-brief-description
   ```
   or
   ```bash
   git checkout -b fix/issue-123-brief-description
+  ```
+- If you want to sync with the latest changes in the upstream develop branch (recommended before starting work):
+  ```bash
+  git fetch upstream
+  git merge upstream/develop
   ```
 
 ### 3. Making Changes
