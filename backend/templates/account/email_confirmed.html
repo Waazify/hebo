@@ -1,0 +1,36 @@
+<!-- templates/account/email_confirmed.html -->
+{% extends "base.html" %}
+
+{% load i18n %}
+{% load account %}
+
+{% block content %}
+<div class="hero min-h-screen bg-base-100">
+    <div class="hero-content flex-col lg:flex-row-reverse">
+        <div class="text-center lg:text-left">
+            <h1 class="text-5xl font-bold">Email Confirmed</h1>
+            <p class="py-6">Your email address has been successfully verified. Thank you for completing this step!</p>
+        </div>
+        <div class="card flex-shrink-0 w-full max-w-sm shadow-2xl bg-base-100">
+            <div class="card-body">
+                <div class="alert alert-success mb-6">
+                    <div>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <span>Your email address has been successfully verified!</span>
+                    </div>
+                </div>
+                
+                <p class="text-sm mb-4">You can now use all features of your account. Welcome to Hebo AI!</p>
+                
+                <div class="form-control mt-6">
+                    <a href="{% url 'home' %}" class="btn btn-primary">Go to Dashboard</a>
+                </div>
+                
+                <div class="text-sm text-center mt-4">
+                    <p>Thank you for joining our platform.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

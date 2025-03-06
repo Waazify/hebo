@@ -1,0 +1,13 @@
+Confirm Your Email Address
+----------------------------------------------------
+
+Hello {% if user.get_full_name %}{{ user.get_full_name }}{% else %}{{ user }}{% endif %},
+
+Thank you for signing up with Hebo. To complete your registration and verify your account, please confirm your email address by visiting the link below:
+
+{{ activate_url }}
+
+If you didn't create this account, you can safely ignore this email.
+
+----------------------------------------------------
+This email was sent to {{ email }}. If you have questions, please contact support@hebo.ai 

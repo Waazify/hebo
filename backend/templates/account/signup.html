@@ -1,4 +1,4 @@
-<!-- templates/account/login.html -->
+<!-- templates/account/signup.html -->
 {% extends "base.html" %}
 {% load socialaccount %}
 
@@ -6,34 +6,52 @@
 <div class="hero min-h-screen bg-base-100">
     <div class="hero-content flex-col lg:flex-row-reverse">
         <div class="text-center lg:text-left">
-            <h1 class="text-5xl font-bold">Hebo AI</h1>
-            <p class="py-6">Empower your business with intelligent conversations.</p>
+            <h1 class="text-5xl font-bold">Join Hebo AI</h1>
+            <p class="py-6">Create an account to get started with intelligent conversations.</p>
         </div>
         <div class="card flex-shrink-0 w-full max-w-sm shadow-2xl bg-base-100">
-            <div class="card-body" x-data="{ email: '', password: '' }">
+            <div class="card-body" x-data="{ email: '', password1: '', password2: '' }">
                 <form method="POST">
                     {% csrf_token %}
                     <div class="form-control">
                         <label class="label">
                             <span class="label-text">Email</span>
                         </label>
-                        <input type="email" name="login" placeholder="email" class="input input-bordered" x-model="email" />
+                        <input type="email" name="email" placeholder="email" class="input input-bordered" x-model="email" value="{{ form.email.value|default:'' }}" required />
+                        {% if form.email.errors %}
+                        <label class="label">
+                            <span class="label-text-alt text-error">{{ form.email.errors }}</span>
+                        </label>
+                        {% endif %}
                     </div>
                     <div class="form-control">
                         <label class="label">
                             <span class="label-text">Password</span>
                         </label>
-                        <input type="password" name="password" placeholder="password" class="input input-bordered" x-model="password" />
+                        <input type="password" name="password1" placeholder="password" class="input input-bordered" x-model="password1" required />
+                        {% if form.password1.errors %}
                         <label class="label">
-                            <a href="{% url 'account_reset_password' %}" class="label-text-alt link link-hover">Forgot password?</a>
+                            <span class="label-text-alt text-error">{{ form.password1.errors }}</span>
                         </label>
+                        {% endif %}
+                    </div>
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text">Confirm Password</span>
+                        </label>
+                        <input type="password" name="password2" placeholder="confirm password" class="input input-bordered" x-model="password2" required />
+                        {% if form.password2.errors %}
+                        <label class="label">
+                            <span class="label-text-alt text-error">{{ form.password2.errors }}</span>
+                        </label>
+                        {% endif %}
                     </div>
                     <div class="form-control mt-6">
-                        <button type="submit" class="btn btn-primary">Login</button>
+                        <button type="submit" class="btn btn-primary">Sign Up</button>
                     </div>
                     <div class="text-sm text-center mt-3">
-                        <span>Don't have an account?</span> 
-                        <a href="{% url 'account_signup' %}" class="link link-primary">Sign Up</a>
+                        <span>Already have an account?</span> 
+                        <a href="{% url 'account_login' %}" class="link link-primary">Login</a>
                     </div>
                 </form>
 
@@ -60,4 +78,4 @@
         </div>
     </div>
 </div>
-{% endblock %}
+{% endblock %} 
