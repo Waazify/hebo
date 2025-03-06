@@ -33,7 +33,7 @@
                     </label>
                     <div class="flex gap-2">
                         <select name="core_llm" 
-                                class="select select-bordered flex-1"
+                                class="select select-bordered w-full max-w-[300px] truncate"
                                 @change="if ($event.target.value === 'new') {
                                     newAdapterFields.core = true;
                                     adapterType = 'chat';
@@ -46,7 +46,8 @@
                             {% else %}
                                 {% for adapter in chat_adapters %}
                                     <option value="{{ adapter.id }}" 
-                                            {% if agent_setting.core_llm_id == adapter.id %}selected{% endif %}>
+                                            {% if agent_setting.core_llm_id == adapter.id %}selected{% endif %}
+                                            class="truncate">
                                         {{ adapter.name }} 
                                         {% if adapter.is_default %}(Default){% endif %}
                                     </option>
@@ -103,7 +104,7 @@
                             </label>
                             <div class="flex gap-2">
                                 <select name="condense_llm" 
-                                        class="select select-bordered flex-1"
+                                        class="select select-bordered w-full max-w-[300px] truncate"
                                         @change="if ($event.target.value === 'new') {
                                             newAdapterFields.condense = true;
                                             adapterType = 'chat';
@@ -116,7 +117,8 @@
                                     {% else %}
                                         {% for adapter in chat_adapters %}
                                             <option value="{{ adapter.id }}" 
-                                                    {% if agent_setting.condense_llm_id == adapter.id %}selected{% endif %}>
+                                                    {% if agent_setting.condense_llm_id == adapter.id %}selected{% endif %}
+                                                    class="truncate">
                                                 {{ adapter.name }} 
                                                 {% if adapter.is_default %}(Default){% endif %}
                                             </option>
@@ -158,7 +160,7 @@
                             </label>
                             <div class="flex gap-2">
                                 <select name="embeddings" 
-                                        class="select select-bordered flex-1"
+                                        class="select select-bordered w-full max-w-[300px] truncate"
                                         @change="if ($event.target.value === 'new') {
                                             newAdapterFields.embeddings = true;
                                             adapterType = 'embedding';
@@ -171,7 +173,8 @@
                                     {% else %}
                                         {% for adapter in embedding_adapters %}
                                             <option value="{{ adapter.id }}"
-                                                    {% if agent_setting.embeddings_id == adapter.id %}selected{% endif %}>
+                                                    {% if agent_setting.embeddings_id == adapter.id %}selected{% endif %}
+                                                    class="truncate">
                                                 {{ adapter.name }}
                                                 {% if adapter.is_default %}(Default){% endif %}
                                             </option>
