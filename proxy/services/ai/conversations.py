@@ -170,6 +170,7 @@ def execute_conversation(
             tool_message = ToolMessage(
                 content=tool_message_content,  # type: ignore
                 tool_call_id=tool_call["id"],
+                additional_kwargs={"tool_call_name": tool_call["name"]},
             )
             conversation.append(tool_message)
             yield tool_message

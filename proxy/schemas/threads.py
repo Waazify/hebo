@@ -89,6 +89,7 @@ class Message(BaseMessage):
     created_at: datetime
     run_status: Optional[RunStatus] = None
     tool_call_id: Optional[str] = None
+    tool_call_name: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -82,8 +82,8 @@ class DB:
         """Add a message to a thread"""
         query = """
             INSERT INTO threads_message (
-                thread_id, created_at, message_type, content, run_status
-            ) VALUES ($1, $2, $3, $4::jsonb, $5)
+                thread_id, created_at, message_type, content, run_status, tool_call_id, tool_call_name
+            ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
             RETURNING id
         """
 
@@ -103,6 +103,8 @@ class DB:
             message.message_type.value,
             json_content,
             message.run_status.value if message.run_status else None,
+            message.tool_call_id,
+            message.tool_call_name,
         )
 
         if message_id is None:
