@@ -252,7 +252,7 @@ class ThreadManager:
             # TODO: retrieve past conversation summaries
 
             reply_messages = []
-            for reply in execute_conversation(
+            for _reply in execute_conversation(
                 agent_settings_or_llm=agent_settings,
                 conversation=llm_conversation,
                 behaviour=behaviour,
@@ -263,11 +263,11 @@ class ThreadManager:
                 # AiMessages may contain tool calls, ToolMessages are 1 single text message
                 message_type = (
                     MessageType.AI
-                    if isinstance(reply, AIMessage)
+                    if isinstance(_reply, AIMessage)
                     else MessageType.TOOL_ANSWER
                 )
                 message_content = []
-                for content in reply.content:
+                for content in _reply.content:
                     if isinstance(content, dict):
                         message_content_type = (
                             MessageContentType.TEXT
@@ -304,6 +304,10 @@ class ThreadManager:
                     thread_id=thread.id,
                     created_at=datetime.now(),
                 )
+
+                if isinstance(_reply, ToolMessage):
+                    reply.tool_call_id = _reply.tool_call_id
+                    reply.tool_call_name = _reply.additional_kwargs.get("tool_call_name")
 
                 reply_messages.append(reply)
                 run_status = await self._get_run_status(run_id, organization_id)
@@ -363,6 +367,21 @@ class ThreadManager:
                                 thread_id=thread.id,
                                 run_status=run_status,
                             )
+                            if message_type == MessageType.TOOL_ANSWER:
+                                message.tool_call_id = reply.tool_call_id
+                                message.tool_call_name = reply.tool_call_name
+                                if reply.tool_call_name == "colleague_handoff":
+                                    # in case of handoff we also yield a comment
+                                    run_response = RunResponse(
+                                        agent_version=run_request.agent_version,
+                                        status=run_status,
+                                        message=BaseMessage(
+                                            message_type=MessageType.COMMENT,
+                                            content=[part],
+                                        ),
+                                        should_send=False,
+                                    )
+                                    yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
                             await self._add_message(message)
 
                         else:

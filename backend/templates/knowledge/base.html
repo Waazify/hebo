@@ -222,7 +222,10 @@
   }
 </script>
 {% endblock %} {% block content %}
-<div class="flex flex-col h-[calc(100vh-4rem)]" x-data="{ showSearchModal: false }">
+<div
+  class="flex flex-col h-[calc(100vh-4rem)]"
+  x-data="{ showSearchModal: false }"
+>
   {% csrf_token %}
   <meta name="selected-version" content="{{ selected_version_id }}" />
   <!-- Main content area -->
@@ -462,21 +465,51 @@
       x-init="initializeChat()"
     >
       <!-- Chat messages area - scrollable -->
-      <div class="flex-1 overflow-y-auto custom-scrollbar" x-ref="messagesContainer">
+      <div
+        class="flex-1 overflow-y-auto custom-scrollbar"
+        x-ref="messagesContainer"
+      >
         <div class="min-h-full flex flex-col justify-end">
           <template x-for="message in messages" :key="message.id">
             <!-- Message container -->
             <div
               class="flex px-4 py-8 sm:px-6"
-              :class="{ 'bg-base-200': message.message_type === 'ai' }"
+              :class="{
+                'bg-base-200': message.message_type === 'ai',
+                'bg-error/10': message.message_type === 'comment'
+              }"
             >
               <img
                 class="mr-2 flex h-8 w-8 rounded-full sm:mr-4"
-                :src="message.message_type === 'human' ? 'https://dummyimage.com/256x256/363536/ffffff&text=U' : 'https://dummyimage.com/256x256/354ea1/ffffff&text=A'"
-                :alt="message.message_type === 'human' ? 'User' : 'Assistant'"
+                :src="message.message_type === 'human' ? 'https://dummyimage.com/256x256/363536/ffffff&text=U' : message.message_type === 'ai' ? 'https://dummyimage.com/256x256/354ea1/ffffff&text=A' : 'https://dummyimage.com/256x256/dc2626/ffffff&text=S'"
+                :alt="message.message_type === 'human' ? 'User' : message.message_type === 'ai' ? 'Assistant' : 'System'"
               />
               <div class="flex w-full flex-col">
-                <p class="max-w-3xl" x-text="message.content"></p>
+                <!-- Regular message content -->
+                <template x-if="message.message_type !== 'comment'">
+                  <p class="max-w-3xl" x-text="message.content"></p>
+                </template>
+
+                <!-- Comment message with text and error -->
+                <template x-if="message.message_type === 'comment'">
+                  <div class="flex flex-col gap-4">
+                    <template x-if="message.text">
+                      <p
+                        class="max-w-3xl text-error-content"
+                        x-text="message.text"
+                      ></p>
+                    </template>
+                    <template x-if="message.error">
+                      <div class="bg-base-100 rounded-lg p-4">
+                        <p
+                          class="font-mono text-sm text-error"
+                          x-text="message.error"
+                        ></p>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+
                 <template x-if="message.message_type === 'ai'">
                   <div class="flex justify-end mt-4">
                     <button class="text-base-content/50 hover:text-primary">
@@ -705,7 +738,7 @@
             }),
           }
         );
-        
+
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -713,30 +746,30 @@
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          
+
           buffer += decoder.decode(value, { stream: true });
-          
+
           // Process complete messages
           while (true) {
-            const newlineIndex = buffer.indexOf('\n');
+            const newlineIndex = buffer.indexOf("\n");
             if (newlineIndex === -1) break;
-            
+
             const line = buffer.slice(0, newlineIndex).trim();
             buffer = buffer.slice(newlineIndex + 1);
-            
-            if (line.startsWith('data: ')) {
+
+            if (line.startsWith("data: ")) {
               try {
                 const jsonData = line.slice(6); // Remove 'data: ' prefix
                 const parsed = JSON.parse(jsonData);
-                
+
                 // Process each complete message that should be sent
                 if (parsed.should_send && parsed.message) {
                   // Collect all text content from the message
                   const textContent = parsed.message.content
-                    .filter(item => item.type === "text")
-                    .map(item => item.text)
+                    .filter((item) => item.type === "text")
+                    .map((item) => item.text)
                     .join("");
-                    
+
                   if (textContent) {
                     // Create a new message for each complete response
                     const newMessage = {
@@ -749,13 +782,35 @@
                     this.scrollToBottom();
                   }
                 }
+
+                // Handle comment messages (including errors) regardless of should_send flag
+                if (parsed.message?.message_type === "comment") {
+                  const textContent = parsed.message.content.find(
+                    (item) => item.type === "text"
+                  )?.text;
+                  const errorContent = parsed.message.content.find(
+                    (item) => item.type === "error"
+                  )?.error;
+
+                  if (textContent || errorContent) {
+                    const newMessage = {
+                      id: Date.now() + Math.random(),
+                      message_type: "comment",
+                      text: textContent,
+                      error: errorContent,
+                      timestamp: new Date().toLocaleTimeString(),
+                    };
+                    this.messages.push(newMessage);
+                    this.scrollToBottom();
+                  }
+                }
               } catch (e) {
                 console.error("Stream parse error", e);
               }
             }
           }
         }
-        
+
         this.isStreaming = false;
         this.scrollToBottom();
       } catch (err) {

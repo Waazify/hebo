@@ -343,6 +343,13 @@ class Message(models.Model):
         help_text=_("The ID of the tool call this message is a response to"),
     )
 
+    tool_call_name = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text=_("The name of the tool this message is a response to"),
+    )
+
     objects = MessageManager()
 
     class Meta:
