@@ -12,7 +12,6 @@ class Page(BaseModel):
     content: str
     created_at: datetime
     updated_at: datetime
-    is_published: bool = False
     parent_id: Optional[int] = None
 
     class Config:
@@ -33,11 +32,9 @@ class Part(BaseModel):
     end_line: int
     content_hash: str = Field(max_length=64)
     content_type: ContentType
-    identifier: str = Field(max_length=100)
     is_handover: bool = False
     created_at: datetime
     updated_at: datetime
-    is_valid: bool = True
 
     @field_validator("end_line", mode="before")
     @classmethod

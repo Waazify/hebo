@@ -1,4 +1,5 @@
 import json
+import logging
 import markdown
 
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -20,8 +21,6 @@ from core.mixins import OrganizationPermissionMixin
 from versions.models import Version
 from .forms import PageForm
 from .models import Page
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +263,7 @@ class PageUpdateView(LoginRequiredMixin, OrganizationPermissionMixin, UpdateView
                 }
             )
         except Exception as e:
+            logger.error(f"Error updating page: {str(e)}")
             return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
 

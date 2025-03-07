@@ -414,12 +414,13 @@ class Version(models.Model):
                     version=self,
                     title=old_page.title,
                     content=old_page.content,
-                    is_published=old_page.is_published,
                     position=old_page.position,
                     parent=None,  # We'll update this after all pages are created
                 )
+
+                # TODO: these 2 could be unified
                 new_page._skip_part_generation = True
-                new_page.save()
+                new_page.save(skip_version_check=True)
 
                 # Store old_id -> new_id mapping for updating parent relationships
                 self._page_mapping[old_page.id] = new_page.id  # type: ignore
