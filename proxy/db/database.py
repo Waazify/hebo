@@ -249,7 +249,6 @@ class DB:
             WHERE pg.version_id = $1
               AND pg.organization_id = $2
               AND p.content_type = 'behaviour'
-              AND p.is_valid = true
             ORDER BY ph.path, p.start_line, p.end_line
         """
         rows = await self.conn.fetch(query, version_id, organization_id)
