@@ -16,6 +16,7 @@ from langchain_core.messages import (
 
 from config import settings
 from db.database import DB
+from db.vectorstore import VectorStore
 from schemas.ai import Session
 from schemas.threads import (
     AddMessageRequest,
@@ -31,7 +32,6 @@ from schemas.threads import (
     RunStatus,
     Thread,
 )
-from db.vectorstore import VectorStore
 from .ai.conversations import execute_conversation
 from .ai.vision import get_content_from_human_message
 from .exceptions import ColleagueHandoffException

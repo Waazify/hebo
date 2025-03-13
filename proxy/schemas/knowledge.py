@@ -58,29 +58,21 @@ class Part(BaseModel):
 
 class Vector(BaseModel):
     part_id: int
+    content: str
     embedding_model: str = Field(max_length=20)
     vector: List[float]
-    created_at: datetime
-    updated_at: datetime
     metadata: Dict[str, Any]
-
-    @field_validator("vector", mode="before")
-    @classmethod
-    def validate_vector(cls, value, values):
-        # Assuming DIMENSION_MAP is available in the context
-        dimension_map = {
-            "ada002": 1536,
-            "minilm": 384,
-            "mpnet": 768,
-            "bger": 1024,
-        }
-        if "embedding_model" in values:
-            expected_dims = dimension_map.get(values["embedding_model"])
-            if expected_dims and len(value) != expected_dims:
-                raise ValueError(
-                    f"Vector must have {expected_dims} dimensions for {values['embedding_model']}"
-                )
-        return value
 
     class Config:
         from_attributes = True
+
+
+class CreateVectorRequest(BaseModel):
+    agent_version: str
+    part_id: int
+    embedding_model: str = Field(max_length=20)
+    content: str
+    metadata: Dict[str, Any]
+
+
+class CreateVectorResponse(Vector): ...

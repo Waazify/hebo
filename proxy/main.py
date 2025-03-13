@@ -14,6 +14,10 @@ from config import settings
 from db.database import wait_for_database_connection
 from services import HEBO
 from services.middleware import TaskTracker, TaskTrackerMiddleware
+from schemas.knowledge import (
+    CreateVectorRequest,
+    CreateVectorResponse,
+)
 from schemas.server import HealthResponse
 from schemas.threads import (
     AddMessageRequest,
@@ -25,6 +29,7 @@ from schemas.threads import (
     RunRequest,
 )
 from services.thread_manager import ThreadManager
+from services.vector_manager import VectorManager
 
 from __version__ import __version__
 
@@ -132,11 +137,23 @@ async def health_check(request: Request):
         db_status = "unhealthy"
         raise HTTPException(status_code=503, detail="Database connection failed")
 
-    return HealthResponse(
-        status="healthy",
-        version=__version__,
-        database=db_status
-    )
+    return HealthResponse(status="healthy", version=__version__, database=db_status)
+
+
+@app.post("/vector", response_model=CreateVectorResponse)
+async def create_vector(request: CreateVectorRequest, req: Request):
+    """Create a new vector"""
+    organization_id = req.state.organization["id"]
+    logger.info("Creating vector for organization %s", organization_id)
+
+    # Create DB instance for this request
+    async with app.state.db_pool.acquire() as conn:
+        vector_manager = VectorManager(conn)
+
+        # Create vector
+        vector = await vector_manager.create_vector(request, organization_id)
+
+        return vector
 
 
 @app.post("/threads", response_model=CreateThreadResponse)
