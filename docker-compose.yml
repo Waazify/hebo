@@ -40,7 +40,6 @@ services:
     environment:
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
-      - BACKEND_URL=http://backend:8000
       - ADDITIONAL_CORS_ORIGINS="https://api.hebo.ai,https://app.hebo.ai"
     depends_on:
       - db
