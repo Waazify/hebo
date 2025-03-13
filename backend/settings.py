@@ -152,6 +152,7 @@ DATABASES = {
 
 # Proxy server
 PROXY_SERVER_BASE_URL = os.getenv("PROXY_SERVER_BASE_URL", "http://localhost:80/api")
+PROXY_URL = os.getenv("PROXY_URL", "http://localhost:8001")
 
 
 # Password validation

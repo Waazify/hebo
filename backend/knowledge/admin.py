@@ -16,13 +16,13 @@ class PageAdmin(ModelAdmin):
 
 @admin.register(Part)
 class PartAdmin(ModelAdmin):
-    list_display = ["page", "start_line", "end_line", "created_at"]
+    list_display = ["page", "start_line", "end_line", "created_at", "updated_at"]
     search_fields = ["page__title", "page__version__name"]
     list_filter = ["created_at"]
 
 
 @admin.register(VectorStore)
 class VectorStoreAdmin(ModelAdmin):
-    list_display = ["part", "embedding_model", "created_at"]
+    list_display = ["part", "embedding_model", "created_at", "updated_at"]
     search_fields = ["part__page__title"]
     list_filter = ["created_at"]

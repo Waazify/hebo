@@ -1,16 +1,19 @@
 import logging
 import re
+import requests
 import markdown
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import models, IntegrityError
+from django.db import models, IntegrityError, transaction
 from django.utils import timezone
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
-from pgvector.django import VectorField
+from pgvector.django import HnswIndex, VectorField
 
+from api_keys.models import APIKey
 from agent_settings.models import AgentSetting
 from core.managers import OrganizationManagerMixin
 from hebo_organizations.models import Organization
@@ -23,6 +26,7 @@ if TYPE_CHECKING:
 
 class PartGenerationError(Exception):
     """Custom exception for part generation errors."""
+
     pass
 
 
@@ -276,6 +280,8 @@ class Page(models.Model):
         new_part_hashes = {block["content_hash"] for block in all_blocks}
 
         # Delete existing parts not in new set
+        # This is safe to do (i.e. we don't invalidate old versions), because we
+        # only delete parts when the version is in 'next' status.
         if self.pk:
             self.parts.exclude(content_hash__in=new_part_hashes).delete()
 
@@ -450,6 +456,8 @@ class Part(models.Model):
                 name="unique_part_per_page",
             )
         ]
+
+        # TODO: review these based on how the proxy is querying
         indexes = [
             models.Index(fields=["page", "content_type"]),
             models.Index(fields=["page", "content_hash"]),
@@ -468,8 +476,211 @@ class Part(models.Model):
             )
 
     def save(self, *args, **kwargs):
+        # Store the original hash if this is an existing part
+        if self.pk:
+            try:
+                original_hash = Part.objects.get(pk=self.pk).content_hash
+            except Part.DoesNotExist:
+                original_hash = None
+        else:
+            original_hash = None
+
         self.full_clean()
         super().save(*args, **kwargs)
+
+        # Only generate vectors for non-behaviour parts and if:
+        # 1. The part has no vector OR
+        # 2. The content hash has changed from the previous value (which means the content has changed)
+        if self.content_type != ContentType.BEHAVIOUR:
+            has_vector = self.vectors.exists()  # type: ignore
+            content_changed = original_hash and original_hash != self.content_hash
+
+            if not has_vector or content_changed:
+                # Use background task for vector generation
+                transaction.on_commit(lambda: self.generate_vectors_async())
+
+    def generate_vectors_async(self):
+        """Asynchronous version that doesn't block the main thread"""
+        # For now, we'll use threading as a simple solution
+        import threading
+
+        thread = threading.Thread(target=self.generate_vectors)
+        thread.daemon = True
+        thread.start()
+
+    def generate_vectors(self):
+        """
+        Generates vectors for the part by:
+        1. Formatting the content based on the content type
+        2. Fetching API credentials
+        3. Retrieving agent version from slugs
+        4. Getting embedding model from agent settings
+        5. Calling the proxy service with retries and error handling
+        """
+        try:
+            # Step 1: Format the content based on the content type
+            # Get the raw content from the page
+            if self.start_line is None or self.end_line is None:
+                logger.warning(f"Part {self.pk} has invalid line numbers")
+                return
+
+            # Extract content from the page content using line numbers
+            content_lines = self.page.content.splitlines()[
+                self.start_line : self.end_line + 1
+            ]
+            raw_content = "\n".join(content_lines)
+
+            # Remove backtick code blocks (```example``` or ```scenario```)
+            formatted_content = re.sub(
+                r"```\s*(?:example|scenario)\s*\n|\n\s*```", "", raw_content
+            )
+
+            # Wrap examples in <example> tags if needed
+            if self.content_type == ContentType.EXAMPLE:
+                # TODO: the <example> tags should depend on the core llm used.
+                formatted_content = f"<example>\n{formatted_content}\n</example>"
+
+            # Step 2: Get API key for the organization
+            try:
+                api_key = (
+                    APIKey.objects.filter(
+                        organization=self.page.organization, is_active=True
+                    )
+                    .order_by("-created_at")
+                    .first()
+                )
+
+                if not api_key:
+                    logger.error(
+                        f"No active API key found for organization {self.page.organization.id}"
+                    )
+                    return
+
+            except Exception as e:
+                logger.error(f"Error fetching API key: {str(e)}")
+                return
+
+            # Step 3: Get agent version - use one of the version slugs
+            try:
+                # Try to get a version-specific slug first
+                version_slug = self.page.version.slugs.first()
+                if version_slug:
+                    agent_version = version_slug.slug
+                else:
+                    # Fallback to version name if no slugs are available
+                    agent_version = (
+                        f"{self.page.version.agent.slug}:{self.page.version.name}"
+                    )
+                    logger.warning(
+                        f"No version slugs found for version {self.page.version.pk}, using fallback: {agent_version}"
+                    )
+            except Exception as e:
+                # Worst case fallback
+                agent_version = str(self.page.version.pk)
+                logger.error(
+                    f"Error getting version slug: {str(e)}, using version ID as fallback"
+                )
+
+            # Step 4: Get embedding model from agent settings
+            embedding_model = "ada002"  # Default fallback
+            try:
+                agent_setting = AgentSetting.objects.get(version=self.page.version)
+                if agent_setting.embeddings and agent_setting.embeddings.name:
+                    # Use the embedding model from settings
+                    embedding_model = agent_setting.embeddings.name
+                    # Some models might be stored with full names, but we need short names for the API
+                    # Map common model names to their short format if needed
+                    model_map = {
+                        "text-embedding-ada-002": "ada002",
+                        "all-MiniLM-L6-v2": "minilm",
+                        "all-mpnet-base-v2": "mpnet",
+                        "bge-large-en": "bger",
+                        "voyage-multimodal-3": "voyage",
+                    }
+                    embedding_model = model_map.get(embedding_model, embedding_model)
+                else:
+                    logger.warning(
+                        f"No embedding model configured for version {self.page.version.pk}, using default: {embedding_model}"
+                    )
+            except AgentSetting.DoesNotExist:
+                logger.warning(
+                    f"No agent settings found for version {self.page.version.pk}, using default embedding model: {embedding_model}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error retrieving embedding model: {str(e)}, using default: {embedding_model}"
+                )
+
+            # Get content_type as string for metadata
+            if isinstance(self.content_type, str):
+                content_type_str = self.content_type
+            else:
+                # Assuming it's an enum instance
+                try:
+                    content_type_str = self.content_type.value
+                except AttributeError:
+                    # Fallback if it's neither string nor has value attribute
+                    content_type_str = str(self.content_type)
+
+            # Step 5: Prepare payload for the proxy service
+            payload = {
+                "agent_version": agent_version,
+                "part_id": self.pk,
+                "embedding_model": embedding_model,
+                "content": formatted_content,
+                "metadata": {
+                    "content_type": content_type_str,
+                    "version_id": self.page.version.pk,
+                },
+            }
+
+            # Step 6: Call the proxy endpoint
+            proxy_url = f"{settings.PROXY_URL}/vector"
+
+            def make_request():
+                return requests.post(
+                    proxy_url,
+                    json=payload,
+                    headers={
+                        "X-API-Key": api_key.key,
+                        "Content-Type": "application/json",
+                    },
+                    timeout=30,  # Add a 30-second timeout to prevent hanging requests
+                )
+
+            # Make the request with retry logic
+            try:
+                response = make_request()
+
+                # Retry once if request fails
+                if response.status_code >= 400:
+                    logger.warning(
+                        f"First attempt to create vector failed with status {response.status_code}: {response.text}"
+                    )
+                    response = make_request()
+
+                # Check final response
+                if response.status_code >= 400:
+                    logger.error(
+                        f"Failed to create vector after retry. Status: {response.status_code}, "
+                        f"Response: {response.text}"
+                    )
+                    return
+
+                logger.info(f"Successfully created vector for part {self.pk}")
+
+            except requests.exceptions.Timeout:
+                logger.error(f"Timeout while calling vector service for part {self.pk}")
+                return
+            except Exception as e:
+                logger.error(f"Error calling vector service: {str(e)}")
+                return
+
+        except Exception as e:
+            logger.error(f"Error in generate_vectors for part {self.pk}: {str(e)}")
+            return
+
+        return True
 
     @staticmethod
     def _generate_hash(content: str) -> str:
@@ -494,6 +705,7 @@ class VectorStore(models.Model):
     - minilm: 384 dimensions
     - mpnet: 768 dimensions
     - bge-large-en: 1024 dimensions
+    - voyage-multimodal-3: 1024 dimensions
     """
 
     class EmbeddingModel(models.TextChoices):
@@ -501,23 +713,19 @@ class VectorStore(models.Model):
         MINILM = "minilm", "all-MiniLM-L6-v2"  # 384 dims
         MPNET = "mpnet", "all-mpnet-base-v2"  # 768 dims
         BGER = "bger", "bge-large-en"  # 1024 dims
+        VOYAGE = "voyage", "voyage-multimodal-3"  # 1024 dims
 
     DIMENSION_MAP = {
         EmbeddingModel.ADA_002: 1536,
         EmbeddingModel.MINILM: 384,
         EmbeddingModel.MPNET: 768,
         EmbeddingModel.BGER: 1024,
+        EmbeddingModel.VOYAGE: 1024,
     }
 
-    # TODO: the PK should be the part hash
-    # TODO: when retriving a vector, the auhtorization should be checked at page/part level.
-    #  Multiple parts can have the same vector as long as they have the same part hash.
-    # At the same time, multiple parts with the same hash may have different embedding settings.
+    part = models.ForeignKey("Part", on_delete=models.CASCADE, related_name="vectors")
 
-    # TODO: to find a way to delete a vector when no parts with the same hash exist.
-    part = models.ForeignKey(
-        "Part", on_delete=models.SET_NULL, null=True, related_name="vectors"
-    )
+    content = models.TextField(help_text="The content that was embedded")
 
     embedding_model = models.CharField(
         max_length=20,
@@ -525,7 +733,13 @@ class VectorStore(models.Model):
         help_text="Must match the embedding model in agent settings",
     )
 
-    vector = VectorField(dimensions=1536)  # Max dimensions (ada-002)
+    # TODO: Add support for other embeddings providers
+    vector_1536 = VectorField(
+        dimensions=1536, null=True, blank=True
+    )  # Max dimensions (ada-002)
+    vector_1024 = VectorField(
+        dimensions=1024, null=True, blank=True
+    )  # Dimensions for other models
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -535,19 +749,29 @@ class VectorStore(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["id"]),
+            HnswIndex(
+                name="vector_1536_index",
+                fields=["vector_1536"],
+                m=16,
+                ef_construction=64,
+                opclasses=["vector_cosine_ops"],
+            ),
+            HnswIndex(
+                name="vector_1024_index",
+                fields=["vector_1024"],
+                m=16,
+                ef_construction=64,
+                opclasses=["vector_cosine_ops"],
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["part", "embedding_model"],
+                fields=["part"],
                 name="unique_vector_per_part",
             )
         ]
 
     def clean(self):
-        # TODO: find a more robust solution once the TODOs above are addressed
-        if self.part is None:
-            return
-
         try:
             agent_settings = AgentSetting.objects.get(version=self.part.page.version)
         except AgentSetting.DoesNotExist:
@@ -566,10 +790,28 @@ class VectorStore(models.Model):
 
         # Use enum value to access DIMENSION_MAP
         expected_dims = self.DIMENSION_MAP[embedding_model]
-        if self.vector is not None and len(self.vector) != expected_dims:
+
+        # Determine which vector field to use based on dimensions
+        if expected_dims == 1536:
+            vector_field = self.vector_1536
+            field_name = "vector_1536"
+        else:
+            vector_field = self.vector_1024
+            field_name = "vector_1024"
+
+        # Validate that the appropriate vector field is not null
+        if vector_field is None:
             raise ValidationError(
                 {
-                    "vector": f"Vector must have {expected_dims} dimensions for {self.embedding_model}"
+                    field_name: f"Vector field {field_name} must not be null for embedding model {self.embedding_model}"
+                }
+            )
+
+        # Validate vector dimensions if present
+        if vector_field is not None and len(vector_field) != expected_dims:
+            raise ValidationError(
+                {
+                    field_name: f"Vector must have {expected_dims} dimensions for {self.embedding_model}"
                 }
             )
 

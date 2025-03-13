@@ -4,9 +4,6 @@ from typing import List
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
-from .ai.conversations import execute_condense
-from .ai.embeddings.voyage import VoyageClient
-
 from db.vectorstore import VectorStore
 from schemas.ai import Session
 from schemas.agent_settings import AgentSetting
@@ -15,6 +12,8 @@ from schemas.knowledge import ContentType
 # TODO: Add support for other embeddings providers
 # TODO: provide a similar interface for other embeddings and chat models
 from .ai.chat_models.bedrock import get_bedrock_client
+from .ai.conversations import execute_condense
+from .ai.embeddings.voyage import VoyageClient
 from .exceptions import EmbeddingError, RetrievalError
 
 logger = logging.getLogger(__name__)
@@ -31,8 +30,7 @@ class Retriever:
         # TODO: Add support for other embeddings providers
         self.embeddings_client = VoyageClient(
             agent_settings.embeddings.api_key
-            if agent_settings.embeddings
-            and agent_settings.embeddings.api_key
+            if agent_settings.embeddings and agent_settings.embeddings.api_key
             else ""
         )
         self.condense_client = get_bedrock_client(
@@ -55,6 +53,28 @@ class Retriever:
                 else ""
             ),
         )
+
+    async def embed_content(self, content: str) -> List[float]:
+        """Embed content using the embeddings client.
+
+        Args:
+            content: The content to embed
+
+        Returns:
+            The embedded content
+
+        Raises:
+            EmbeddingError: If there's an error during the embedding process
+        """
+        try:
+            response = self.embeddings_client.get_multimodal_embeddings(
+                inputs=[[content]],
+                input_type="document",
+            )
+            return response.embeddings[0]
+        except Exception as e:
+            logger.error("Failed to generate embeddings: %s", str(e))
+            raise EmbeddingError(f"Embedding generation failed: {str(e)}")
 
     async def get_relevant_sources(
         self,
@@ -105,6 +125,7 @@ class Retriever:
             try:
                 knowledge_vectors = await self.vector_store.find_similar(
                     query_embedding=embeddings,
+                    version_id=self.agent_settings.version_id,
                     limit=3,
                     content_type=ContentType.SCENARIO,
                     score_threshold=0.3,
@@ -122,6 +143,7 @@ class Retriever:
 
                 example_vectors = await self.vector_store.find_similar(
                     query_embedding=embeddings,
+                    version_id=self.agent_settings.version_id,
                     limit=5,
                     content_type=ContentType.EXAMPLE,
                     score_threshold=0.2,
@@ -138,12 +160,13 @@ class Retriever:
                 logger.error("Vector store search failed: %s", str(e))
                 raise RetrievalError(f"Vector store search failed: {str(e)}")
 
+            # TODO: the <examples> logic should be moved on the example generation, so that it can depend on the core llm used.
             return (
                 "\n\n".join([vector.source for vector in knowledge_vectors])
                 + "\n\n<examples>"
                 + "".join(
                     [
-                        f"\n\n<example>{vector.source}</example>"
+                        f"\n\n{vector.source}"
                         for vector in example_vectors
                     ]
                 )
@@ -173,7 +196,9 @@ class Retriever:
             RetrievalError: If query condensation fails
         """
         try:
-            return execute_condense(self.condense_client, messages, session, agent_settings)
+            return execute_condense(
+                self.condense_client, messages, session, agent_settings
+            )
         except Exception as e:
             logger.error("Query condensation failed: %s", str(e))
             raise RetrievalError(f"Query condensation failed: {str(e)}")
