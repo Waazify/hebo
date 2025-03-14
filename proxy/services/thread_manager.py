@@ -199,7 +199,7 @@ class ThreadManager:
 
             # We include a small latency to make sure the user has finished typing their multi-part message
             # This is more art than science. We should think about a more robust solution in the future. (And patent it eventually)
-            # The solution should handle cases where users are sending multi-part messages. A more sophisticated solution for the traffic light is needed.
+            # The solution should handle cases where users are sending multi-part messages.
             await asyncio.sleep(8 if settings.TARGET_ENV == "production" else 1)
             run_status = await self._get_run_status(run_id, organization_id)
             if run_status != RunStatus.CREATED:
