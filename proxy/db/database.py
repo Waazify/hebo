@@ -125,7 +125,7 @@ class DB:
     ) -> Optional[List[Message]]:
         """Get all messages in a thread"""
         query = """
-            SELECT id, thread_id, created_at, message_type, content
+            SELECT id, thread_id, created_at, message_type, content, tool_call_id, tool_call_name
             FROM threads_message
             WHERE thread_id = $1
             AND (run_status NOT IN ('error', 'expired') OR run_status IS NULL)
@@ -142,6 +142,8 @@ class DB:
                 thread_id=row["thread_id"],
                 created_at=row["created_at"],
                 message_type=MessageType(row["message_type"]),
+                tool_call_id=row["tool_call_id"],
+                tool_call_name=row["tool_call_name"],
                 content=[
                     MessageContent(**content_item)
                     for content_item in (
