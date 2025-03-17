@@ -103,6 +103,19 @@ class ThreadManager:
             organization_id=organization_id,
         )
 
+        # We add a dot to the end of the conversation to make sure the last agent message is not skipped.
+        # TODO: This is a hack. We should find a better way to do this.
+        messages.append(Message(
+                message_type=MessageType.HUMAN,
+                content=[
+                    MessageContent(
+                        type=MessageContentType.TEXT, text="."
+                    )
+                ],
+                thread_id=thread.id,
+                created_at=datetime.now(messages[-1].created_at.tzinfo),
+            )
+        )
         llm_conversation = self._messages_to_llm_conversation(messages)
         summary = execute_summary(agent_settings, llm_conversation, session)
 
