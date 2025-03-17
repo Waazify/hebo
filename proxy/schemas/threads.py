@@ -122,6 +122,7 @@ class CreateThreadResponse(BaseModel):
 class CloseThreadResponse(BaseModel):
     thread_id: int
     is_open: bool
+    summary: Optional[str] = None
 
 
 class AddMessageRequest(BaseMessage): ...

@@ -33,6 +33,7 @@ class AgentSettingUpdateView(
             defaults={
                 "delay": False,
                 "hide_tool_messages": False,
+                "include_last_24h_history": False,
             },
         )
         return obj

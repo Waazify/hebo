@@ -187,7 +187,7 @@ async def close_thread(thread_id: int, req: Request):
         thread_manager = ThreadManager(conn)
 
         # Close thread
-        thread = await thread_manager.close_thread(thread_id, organization_id)
+        thread, summary = await thread_manager.close_thread(thread_id, organization_id)
 
         if not thread or not thread.id:
             raise HTTPException(status_code=404, detail="Thread not found")
@@ -195,6 +195,7 @@ async def close_thread(thread_id: int, req: Request):
         return CloseThreadResponse(
             thread_id=thread.id,
             is_open=thread.is_open,
+            summary=summary,
         )
 
 

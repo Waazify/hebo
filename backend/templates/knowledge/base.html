@@ -477,6 +477,20 @@
       x-data="chatInterface()"
       x-init="initializeChat()"
     >
+      <!-- Add chat header with close button -->
+      <div class="flex-none border-b bg-base-100 p-4 flex justify-between items-center">
+        <h3 class="text-sm font-medium">Your ID: <span class="font-mono" x-text="contactId"></span></h3>
+        <button 
+          @click="closeThread()"
+          class="btn btn-sm btn-ghost gap-2"
+          :disabled="isClosing || !threadId"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          <span x-text="isClosing ? 'Closing...' : 'Close Thread'"></span>
+        </button>
+      </div>
       <!-- Chat messages area - scrollable -->
       <div
         class="flex-1 overflow-y-auto custom-scrollbar"
@@ -677,34 +691,62 @@
 <script>
   const chatInterface = () => ({
     threadId: null,
+    contactId: null,
     messages: [],
     newMessage: "",
     isStreaming: false,
     isLoading: false,
+    isClosing: false,
     error: null,
 
-    async initializeChat() {
+    generateContactId() {
+      // Generate a random string of 8 characters (numbers and lowercase letters)
+      const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
+      return 'chat_' + Array.from(crypto.getRandomValues(new Uint8Array(8)))
+        .map(x => chars[x % chars.length])
+        .join('');
+    },
+
+    async createNewThread() {
       try {
+        // Generate a new contact ID if we don't have one
+        if (!this.contactId) {
+          this.contactId = this.generateContactId();
+        }
+
         const response = await fetchWithErrorHandling(
           `${PROXY_SERVER_BASE_URL}/threads`,
           {
             method: "POST",
             body: JSON.stringify({
               contact_name: "Admin Chat",
-              contact_identifier: "admin",
+              contact_identifier: this.contactId,
             }),
           }
         );
         const data = await response.json();
         this.threadId = data.thread_id;
+        return true;
       } catch (err) {
-        console.error("Chat initialization error:", err);
+        console.error("Thread creation error:", err);
         this.error = err.message;
+        return false;
       }
+    },
+
+    async initializeChat() {
+      await this.createNewThread();
     },
 
     async sendMessage() {
       if (!this.newMessage.trim()) return;
+      
+      // If we don't have a thread ID, try to create a new thread first
+      if (!this.threadId) {
+        const success = await this.createNewThread();
+        if (!success) return;
+      }
+
       const userMessage = {
         id: Date.now(),
         message_type: "human",
@@ -829,6 +871,66 @@
       } catch (err) {
         this.error = "Stream error: " + err.message;
         this.isStreaming = false;
+      }
+    },
+
+    async closeThread() {
+      if (!this.threadId || this.isClosing) return;
+      
+      this.isClosing = true;
+      try {
+        const response = await fetchWithErrorHandling(
+          `${PROXY_SERVER_BASE_URL}/threads/${this.threadId}/close`,
+          {
+            method: "POST",
+          }
+        );
+        const data = await response.json();
+        
+        // Create a new info message with the close summary
+        const closeMessage = {
+          id: Date.now() + Math.random(),
+          message_type: "comment",
+          text: "Thread closed successfully",
+          error: null,
+          timestamp: new Date().toLocaleTimeString(),
+        };
+        
+        // If there's a summary, add it to the message
+        if (data.summary) {
+          closeMessage.text += "\n\nThread Summary:\n" + data.summary;
+        }
+        
+        this.messages.push(closeMessage);
+        this.scrollToBottom();
+        
+        // Create a new thread immediately after closing
+        await this.createNewThread();
+        
+        // Add a system message indicating a new thread was created
+        const newThreadMessage = {
+          id: Date.now() + Math.random(),
+          message_type: "comment",
+          text: `New thread created with ID: ${this.contactId}`,
+          error: null,
+          timestamp: new Date().toLocaleTimeString(),
+        };
+        this.messages.push(newThreadMessage);
+        this.scrollToBottom();
+        
+      } catch (err) {
+        console.error("Close thread error:", err);
+        const errorMessage = {
+          id: Date.now() + Math.random(),
+          message_type: "comment",
+          text: "Failed to close thread",
+          error: err.message,
+          timestamp: new Date().toLocaleTimeString(),
+        };
+        this.messages.push(errorMessage);
+        this.scrollToBottom();
+      } finally {
+        this.isClosing = false;
       }
     },
 

@@ -14,6 +14,7 @@ class AgentSettingAdmin(ModelAdmin):
         "embeddings",
         "delay",
         "hide_tool_messages",
+        "include_last_24h_history",
     ]
     list_filter = [
         "organization",
@@ -23,6 +24,7 @@ class AgentSettingAdmin(ModelAdmin):
         "embeddings",
         "delay",
         "hide_tool_messages",
+        "include_last_24h_history",
     ]
     search_fields = ["organization__name", "version__name", "version__slugs__slug"]
 

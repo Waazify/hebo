@@ -244,6 +244,23 @@
                                            {% if agent_setting.hide_tool_messages %}checked{% endif %} />
                                 </label>
                             </div>
+
+                            <!-- Include Last 24h History Switch -->
+                            <div class="form-control">
+                                <label class="label cursor-pointer">
+                                    <span class="label-text">
+                                        <div class="font-medium">Include last 24h history</div>
+                                        <div class="text-sm text-base-content/70">
+                                            Enable this option to include the last 24 hours of history in the conversation.
+                                        </div>
+                                    </span>
+                                    <input type="checkbox" 
+                                           name="include_last_24h_history" 
+                                           class="toggle toggle-primary" 
+                                           {% if agent_setting.include_last_24h_history %}checked{% endif %} />
+                                </label>
+                            </div>
+
                         </div>
                     </div>
                 </div>

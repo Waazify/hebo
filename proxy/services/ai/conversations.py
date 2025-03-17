@@ -1,5 +1,5 @@
 import logging
-from typing import Generator, List, Optional, Union
+from typing import Generator, List, Optional
 
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import (
@@ -20,6 +20,7 @@ from .chat_models.bedrock import get_bedrock_client
 from .langfuse_utils import get_langfuse_config
 from .llms import init_llm
 from .prompts.condense import get_condense_prompt
+from .prompts.summary import get_summary_prompt
 from .prompts.system import get_system_prompt
 from .prompts.vision import get_vision_prompt
 from .tools import colleague_handoff
@@ -29,14 +30,14 @@ MAX_RECURSION_DEPTH = settings.MAX_RECURSION_DEPTH
 logger = logging.getLogger(__name__)
 
 
+# TODO: make this async
 def execute_conversation(
     agent_settings_or_llm: AgentSetting | Runnable[LanguageModelInput, BaseMessage],
-    conversation: List[
-        AIMessage | BaseMessage | HumanMessage | SystemMessage | ToolMessage
-    ],
+    conversation: List[BaseMessage],
     session: Session,
     behaviour: str,
     context: str,
+    history_summaries: Optional[str] = None,
     tools: Optional[List[Tool]] = None,
     recursion_depth: int = 0,
 ) -> Generator[AIMessage | BaseMessage | ToolMessage, None, None]:
@@ -82,10 +83,11 @@ def execute_conversation(
     if recursion_depth == 0:
 
         conversation = [
-            SystemMessage(content=get_system_prompt(context, behaviour))
+            SystemMessage(content=get_system_prompt(context, behaviour, history_summaries))
         ] + conversation
 
     if not llm and agent_settings:
+        # TODO: Add support for other LLM providers
         conversation_client = get_bedrock_client(
             (
                 agent_settings.core_llm.aws_access_key_id
@@ -137,6 +139,7 @@ def execute_conversation(
             session,
             behaviour,
             context,
+            history_summaries,
             tools,
             recursion_depth + 1,
         )
@@ -183,15 +186,19 @@ def execute_conversation(
             session,
             behaviour,
             context,
+            history_summaries,
             tools,
             recursion_depth + 1,
         )
 
 
+# TODO: make this async
 def execute_vision(
     client,
-    conversation: List[AIMessage | HumanMessage],
+    conversation: List[BaseMessage],
     session: Session,
+    # TODO: agent_settings is used just for the model name. Client depends on AgentSettings.
+    # TODO: This should be refactored and implemented in a more elegant way.
     agent_settings: AgentSetting,
 ) -> str:
     langfuse_config = get_langfuse_config("vision", session)
@@ -224,17 +231,26 @@ def execute_vision(
 
 def _format_conversation(
     client,
-    conversation: List[AIMessage | HumanMessage],
+    conversation: List[BaseMessage],
     session: Session,
     agent_settings: AgentSetting,
-) -> tuple[str, str]:
+    operation: str = "condense",
+) -> List[str]:
     """Format conversation and return tuple of (previous_chat_history, last_message)"""
     if not conversation:
-        return "", ""
+        return [""]
 
-    def format_message(message: Union[HumanMessage, AIMessage]) -> str:
+    def format_message(
+        message: BaseMessage,
+    ) -> str:
         """Helper function to format a single message"""
-        prefix = "A: " if isinstance(message, HumanMessage) else "B: "
+        first_person = "A" if operation == "condense" else "User"
+        second_person = "B" if operation == "condense" else "You (Assistant)"
+        prefix = (
+            f"{first_person}: "
+            if isinstance(message, HumanMessage)
+            else f"{second_person}: "
+        )
 
         if isinstance(message.content, list):
             content = ""
@@ -251,21 +267,20 @@ def _format_conversation(
             return f"{prefix}{message.content.replace('\n', ' ')}"
 
     # Process all messages and join them with newlines
-    formatted_messages = [
+    return [
         msg
-        for msg in (format_message(message) for message in conversation[:-1])
+        for msg in (format_message(message) for message in conversation)
         if msg  # Filter out empty messages
     ]
 
-    return "\n".join(formatted_messages), format_message(conversation[-1]).replace(
-        "B: ", ""
-    )
 
-
+# TODO: make this async
 def execute_condense(
     client,
-    conversation: List[AIMessage | HumanMessage],
+    conversation: List[BaseMessage],
     session: Session,
+    # TODO: agent_settings is used just for the model name. Client depends on AgentSettings.
+    # TODO: This should be refactored and implemented in a more elegant way.
     agent_settings: AgentSetting,
 ) -> str:
     """Execute a conversation with the LLM and yield messages to be returned."""
@@ -281,9 +296,9 @@ def execute_condense(
         )
 
     llm = get_llm(client)
-    chat_history, follow_up_question = _format_conversation(
-        client, conversation, session, agent_settings
-    )
+    messages = _format_conversation(client, conversation, session, agent_settings)
+    chat_history = "\n".join(messages[:-1])
+    follow_up_question = messages[-1].replace("B: ", "")
 
     try:
         logger.info("Invoking Condense LLM...")
@@ -308,5 +323,76 @@ def execute_condense(
         raise
 
     logger.debug(f"Condense LLM response: {response}")
+    content = response.content
+    return content if isinstance(content, str) else ""
+
+
+# TODO: make this async
+def execute_summary(
+    agent_settings: AgentSetting,
+    conversation: List[BaseMessage],
+    session: Session,
+):
+    langfuse_config = get_langfuse_config("summary", session)
+
+    def get_llm(client):
+        """Initialize the LLM, bind tools to it, and return the instance."""
+        logger.debug("Getting LLM instance")
+        return init_llm(
+            client,
+            agent_settings.condense_llm.name if agent_settings.condense_llm else None,
+        )
+
+    # TODO: Add support for other LLM providers
+    client = get_bedrock_client(
+        (
+            agent_settings.condense_llm.aws_access_key_id
+            if agent_settings
+            and agent_settings.condense_llm
+            and agent_settings.condense_llm.aws_access_key_id
+            else ""
+        ),
+        (
+            agent_settings.condense_llm.aws_secret_access_key
+            if agent_settings
+            and agent_settings.condense_llm
+            and agent_settings.condense_llm.aws_secret_access_key
+            else ""
+        ),
+        (
+            agent_settings.condense_llm.aws_region
+            if agent_settings
+            and agent_settings.condense_llm
+            and agent_settings.condense_llm.aws_region
+            else ""
+        ),
+    )
+
+    llm = get_llm(client)
+
+    messages = _format_conversation(
+        client, conversation, session, agent_settings, operation="summary"
+    )
+
+    try:
+        logger.info("Invoking Summary LLM...")
+        response = llm.invoke(
+            [
+                SystemMessage(content=get_summary_prompt("\n".join(messages))),
+                HumanMessage(
+                    content=(
+                        "Generate a detailed summary of the conversation. "
+                        "Respond with the summary only. "
+                        "No comments or other text."
+                    )
+                ),
+            ],
+            config=langfuse_config,
+        )
+    except Exception as e:
+        logger.error(f"Error invoking LLM: {e}")
+        raise
+
+    logger.debug(f"Summary LLM response: {response}")
     content = response.content
     return content if isinstance(content, str) else ""

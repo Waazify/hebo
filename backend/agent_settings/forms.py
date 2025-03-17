@@ -82,6 +82,7 @@ class AgentSettingForm(forms.ModelForm):
             "embeddings",
             "delay",
             "hide_tool_messages",
+            "include_last_24h_history",
         ]
 
     def __init__(self, *args, **kwargs):
