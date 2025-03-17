@@ -177,6 +177,7 @@ class AgentSetting(models.Model):
     )
     delay = models.BooleanField(default=False)
     hide_tool_messages = models.BooleanField(default=False)
+    include_last_24h_history = models.BooleanField(default=False)
 
     objects = AgentSettingManager()
 

@@ -394,6 +394,7 @@ class Version(models.Model):
                 vision_llm=old_settings.vision_llm,
                 delay=old_settings.delay,
                 hide_tool_messages=old_settings.hide_tool_messages,
+                include_last_24h_history=old_settings.include_last_24h_history,
             )
 
             # Copy associated tools

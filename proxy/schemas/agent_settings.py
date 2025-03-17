@@ -61,6 +61,7 @@ class AgentSetting(BaseModel):
     embeddings: Optional[LLMAdapter] = None
     delay: bool = False
     hide_tool_messages: bool = False
+    include_last_24h_history: bool = False
     tools: List[Tool] = []
 
     class Config:

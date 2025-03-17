@@ -2,7 +2,7 @@ from typing import Optional
 
 
 def get_system_prompt(
-    context: str, behaviour: str, conversation_summaries: Optional[str] = None
+    context: str, behaviour: str, history_summaries: Optional[str] = None
 ) -> str:
     """
     Constructs the system prompt with behaviour, context, and optional conversation history.
@@ -10,7 +10,7 @@ def get_system_prompt(
     Args:
         behaviour: String describing how the assistant should behave
         context: String containing scenarios and examples for the assistant
-        conversation_summaries: Optional string containing summaries of past conversations
+        history_summaries: Optional string containing summaries of past conversations
 
     Returns:
         Formatted system prompt string
@@ -30,16 +30,18 @@ Context:
 """
 
     # Add conversation summaries section if provided
-    if conversation_summaries:
+    if history_summaries:
         prompt += """Previous conversations have taken place that may be relevant to this interaction.
 Below are dense summaries of these past conversations - use this information to maintain continuity
 and provide more contextual responses:
 
-{conversation_summaries}
+Past conversations:
+{history_summaries}
 
+Continue the conversation with the user using the same language and tone as the past conversations.
 """
 
     return prompt.format(
         context=context,
-        conversation_summaries=conversation_summaries if conversation_summaries else "",
+        history_summaries=history_summaries if history_summaries else "",
     )

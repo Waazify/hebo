@@ -32,7 +32,7 @@ from schemas.threads import (
     RunStatus,
     Thread,
 )
-from .ai.conversations import execute_conversation
+from .ai.conversations import execute_conversation, execute_summary
 from .ai.vision import get_content_from_human_message
 from .exceptions import ColleagueHandoffException
 from .retriever import Retriever
@@ -69,11 +69,86 @@ class ThreadManager:
         )
         return thread
 
-    async def close_thread(self, thread_id: int, organization_id: str) -> Thread | None:
+    async def _generate_summary(
+        self, thread: Thread, organization_id: str
+    ) -> str | None:
+
+        if not thread.id:
+            return None
+
+        messages = await self.db.get_valid_thread_messages(thread.id)
+
+        if not messages:
+            return None
+
+        agent_version = await self.db.get_agent_version_from_run(
+            thread.id, organization_id
+        )
+
+        if not agent_version:
+            return None
+
+        agent_settings = await self.db.get_agent_settings(
+            agent_version, organization_id
+        )
+
+        if not agent_settings:
+            return None
+
+        session = Session(
+            contact_identifier=thread.contact_identifier,
+            thread_id=str(thread.id),
+            trace_id=uuid.uuid4(),
+            agent_version=agent_version,
+            organization_id=organization_id,
+        )
+
+        # We add a dot to the end of the conversation to make sure the last agent message is not skipped.
+        # TODO: This is a hack. We should find a better way to do this.
+        messages.append(Message(
+                message_type=MessageType.HUMAN,
+                content=[
+                    MessageContent(
+                        type=MessageContentType.TEXT, text="."
+                    )
+                ],
+                thread_id=thread.id,
+                created_at=datetime.now(messages[-1].created_at.tzinfo),
+            )
+        )
+        llm_conversation = self._messages_to_llm_conversation(messages)
+        summary = execute_summary(agent_settings, llm_conversation, session)
+
+        return summary
+
+    async def close_thread(
+        self, thread_id: int, organization_id: str
+    ) -> tuple[Thread, str | None]:
         await self.db.close_thread(thread_id, organization_id)
         thread = await self.db.get_thread(thread_id, organization_id)
+
+        if not thread:
+            logger.warning("Thread %s not found", thread_id)
+            raise HTTPException(status_code=404, detail="Thread not found")
+
         logger.info("Thread %s closed", thread_id)
-        return thread
+
+        summary = None
+        try:
+            summary = await self._generate_summary(thread, organization_id)
+
+            if not summary:
+                logger.warning("Thread %s has no summary", thread_id)
+
+            else:
+                await self.db.add_thread_summary(thread_id, summary)
+                logger.info("Thread %s has been added a summary", thread_id)
+
+        except Exception as e:
+            logger.error("Error generating summary for thread %s: %s", thread_id, e)
+            return thread, None
+
+        return thread, summary
 
     async def _add_message(self, message: Message) -> Message:
         message = await self._format_message(message)
@@ -119,6 +194,24 @@ class ThreadManager:
         await self.db.remove_message(message_id, thread_id)
         return message_id
 
+    def _messages_to_llm_conversation(
+        self, messages: List[Message]
+    ) -> List[LangchainBaseMessage]:
+
+        llm_conversation: List[LangchainBaseMessage] = []
+
+        # Merge messages
+        conversation_messages = self._merge_sanitize_messages(messages)
+        for message in conversation_messages:
+            if message.message_type.value in ["ai", "human", "tool"]:
+                message_class = {
+                    "ai": AIMessage,
+                    "human": HumanMessage,
+                    "tool": ToolMessage,
+                }[message.message_type.value]
+            llm_conversation.append(message_class(**message.to_langchain_format()))
+        return llm_conversation
+
     async def run_thread(
         self, run_request: RunRequest, thread_id: int, organization_id: str
     ):
@@ -160,7 +253,21 @@ class ThreadManager:
             )
             yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
 
-            messages = await self.db.get_valid_thread_messages(thread_id)
+            messages = []
+
+            if agent_settings.include_last_24h_history and thread.contact_identifier:
+                last_24h_history = await self.db.get_last_24h_history(
+                    thread.contact_identifier, organization_id
+                )
+                if last_24h_history:
+                    messages.extend(last_24h_history)
+
+            else:
+                valid_messages = await self.db.get_valid_thread_messages(thread_id)
+
+                if valid_messages:
+                    messages.extend(valid_messages)
+
             # TODO: refactor the following: we can reduce code duplication here.
             # TODO: Hint: raise colleague handoff exception if the last message is not human.
             if not messages or messages[-1].message_type != MessageType.HUMAN:
@@ -210,21 +317,7 @@ class ThreadManager:
                 yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
                 logger.info("Run %s is not in CREATED status", run_id)
 
-            # Merge messages
-            conversation_messages = self._merge_sanitize_messages(messages)
-            llm_conversation: List[
-                AIMessage | LangchainBaseMessage | HumanMessage | ToolMessage
-            ] = []
-            for message in conversation_messages:
-                if message.message_type.value in ["ai", "human", "tool"]:
-                    message_class = {
-                        "ai": AIMessage,
-                        "human": HumanMessage,
-                        "tool": ToolMessage,
-                    }[message.message_type.value]
-                    llm_conversation.append(
-                        message_class(**message.to_langchain_format())
-                    )
+            llm_conversation = self._messages_to_llm_conversation(messages)
 
             # Create a session to trace the thread execution
             session = Session(
@@ -244,12 +337,20 @@ class ThreadManager:
 
             logger.info("conversation has %s messages", len(llm_conversation))
             logger.info("process conversation with LLM")
-            logger.debug(
-                "Responding to message: %s",
-                conversation_messages[-1].content,
-            )
 
-            # TODO: retrieve past conversation summaries
+            history_summaries_str = None
+            if thread.contact_identifier:
+                history_summaries = await self.db.get_thread_summaries(
+                    thread.contact_identifier, organization_id
+                )
+
+                if history_summaries:
+                    history_summaries_str = "\n\n".join(
+                        [
+                            f"{summary.created_at.strftime('%Y-%m-%d %H:%M:%S')} \n {summary.content}"
+                            for summary in history_summaries
+                        ]
+                    )
 
             reply_messages = []
             for _reply in execute_conversation(
@@ -257,6 +358,7 @@ class ThreadManager:
                 conversation=llm_conversation,
                 behaviour=behaviour,
                 context=context,
+                history_summaries=history_summaries_str,
                 session=session,
             ):
                 # Replies from execute_conversation are of type AiMessage or ToolMessage
@@ -307,7 +409,9 @@ class ThreadManager:
 
                 if isinstance(_reply, ToolMessage):
                     reply.tool_call_id = _reply.tool_call_id
-                    reply.tool_call_name = _reply.additional_kwargs.get("tool_call_name")
+                    reply.tool_call_name = _reply.additional_kwargs.get(
+                        "tool_call_name"
+                    )
 
                 reply_messages.append(reply)
                 run_status = await self._get_run_status(run_id, organization_id)

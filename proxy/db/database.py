@@ -9,7 +9,7 @@ import json
 import asyncpg
 
 from schemas.agent_settings import AgentSetting, LLMAdapter, Tool
-from schemas.threads import Message, MessageType, MessageContent, Thread, Run
+from schemas.threads import Message, MessageType, MessageContent, Run, Summary, Thread
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +157,125 @@ class DB:
         ]
 
     @db_operation
+    async def get_last_24h_history(
+        self, contact_identifier: str, organization_id: str
+    ) -> Optional[List[Message]]:
+        """Get the last 24 hours of history for a contact"""
+        query = """
+            SELECT tm.id, tm.thread_id, tm.created_at, tm.message_type, tm.content, tm.tool_call_id, tm.tool_call_name
+            FROM threads_message as tm
+            JOIN threads_thread tt ON tt.id = tm.thread_id
+            WHERE tt.contact_identifier = $1
+            AND tt.organization_id = $2
+            AND tm.created_at > NOW() - INTERVAL '24 hours'
+            AND (tm.run_status NOT IN ('error', 'expired') OR tm.run_status IS NULL)
+            AND tm.message_type != 'comment'
+            ORDER BY created_at ASC
+        """
+        rows = await self.conn.fetch(query, contact_identifier, organization_id)
+        if not rows:
+            return None
+        return [
+            Message(
+                id=row["id"],
+                thread_id=row["thread_id"],
+                created_at=row["created_at"],
+                message_type=MessageType(row["message_type"]),
+                tool_call_id=row["tool_call_id"],
+                tool_call_name=row["tool_call_name"],
+                content=[
+                    MessageContent(**content_item)
+                    for content_item in (
+                        json.loads(row["content"])
+                        if isinstance(row["content"], str)
+                        else row["content"]
+                    )
+                ],
+            )
+            for row in rows
+        ]
+
+    @db_operation
+    async def get_thread_summaries(
+        self, contact_identifier: str, organization_id: str
+    ) -> Optional[List[Summary]]:
+        """Get all thread summaries for an organization"""
+        query = """
+            SELECT tt.id as thread_id, ts.content, ts.created_at, ts.updated_at
+            FROM threads_summary ts
+            JOIN threads_thread tt ON tt.id = ts.thread_id
+            WHERE tt.contact_identifier = $1
+            AND tt.organization_id = $2
+            ORDER BY ts.created_at DESC
+        """
+        rows = await self.conn.fetch(query, contact_identifier, organization_id)
+        if not rows:
+            return None
+        return [Summary(**row) for row in rows]
+
+    @db_operation
+    async def add_thread_summary(self, thread_id: int, summary: str) -> bool:
+        """Add or update a summary for a thread
+
+        Args:
+            thread_id: The ID of the thread to summarize
+            summary: The generated summary text
+
+        Returns:
+            bool: True if the summary was successfully added/updated
+        """
+        # Check if a summary already exists for this thread
+        check_query = """
+            SELECT id FROM threads_summary
+            WHERE thread_id = $1
+        """
+        existing_summary = await self.conn.fetchval(check_query, thread_id)
+
+        if existing_summary:
+            # Update existing summary
+            query = """
+                UPDATE threads_summary
+                SET content = $1, updated_at = $2
+                WHERE thread_id = $3
+            """
+            result = await self.conn.execute(query, summary, datetime.now(), thread_id)
+            return "UPDATE 1" in result
+        else:
+            # Create new summary
+            query = """
+                INSERT INTO threads_summary (thread_id, content, created_at, updated_at)
+                VALUES ($1, $2, $3, $3)
+            """
+            result = await self.conn.execute(query, thread_id, summary, datetime.now())
+            return "INSERT" in result
+
+    @db_operation
+    async def get_agent_version_from_run(
+        self, thread_id: int, organization_id: str
+    ) -> Optional[str]:
+        """Get the agent version slug from the latest run of a thread
+
+        Args:
+            thread_id: The ID of the thread
+            organization_id: The organization ID
+
+        Returns:
+            str: The agent version slug or None if no run exists
+        """
+        query = """
+            SELECT vs.slug
+            FROM threads_run r
+            JOIN versions_version v ON v.id = r.version_id
+            JOIN versions_versionslug vs ON vs.version_id = v.id
+            WHERE r.thread_id = $1
+            AND r.organization_id = $2
+            ORDER BY r.created_at DESC
+            LIMIT 1
+        """
+        version_slug = await self.conn.fetchval(query, thread_id, organization_id)
+        return version_slug
+
+    @db_operation
     async def get_agent_settings(
         self, version_slug: str, organization_id: str
     ) -> Optional[AgentSetting]:
@@ -164,7 +283,7 @@ class DB:
         # First get agent settings by joining through version slugs
         settings_query = """
             SELECT
-                s.id, s.organization_id, s.version_id, s.delay, s.hide_tool_messages,
+                s.id, s.organization_id, s.version_id, s.delay, s.hide_tool_messages, s.include_last_24h_history,
                 s.core_llm_id, s.condense_llm_id, s.vision_llm_id, s.embeddings_id
             FROM agent_settings_agentsetting s
             JOIN versions_versionslug vs ON vs.version_id = s.version_id
@@ -219,6 +338,7 @@ class DB:
             embeddings=adapters_dict.get(settings_row["embeddings_id"]),
             delay=settings_row["delay"],
             hide_tool_messages=settings_row["hide_tool_messages"],
+            include_last_24h_history=settings_row["include_last_24h_history"],
             tools=tools,
         )
 
@@ -256,12 +376,9 @@ class DB:
         rows = await self.conn.fetch(query, version_id, organization_id)
         parts = []
         for row in rows:
-            content_lines = row['content'].splitlines()
-            content = "\n".join(content_lines[row['start_line']:row['end_line']+1])
-            parts.append({
-                "id": row["id"],
-                "content": content
-            })
+            content_lines = row["content"].splitlines()
+            content = "\n".join(content_lines[row["start_line"] : row["end_line"] + 1])
+            parts.append({"id": row["id"], "content": content})
         return parts
 
     @db_operation

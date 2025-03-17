@@ -6,8 +6,6 @@ class Settings(BaseSettings):
     # Environment settings
     TARGET_ENV: str = "dev"
     LOG_LEVEL: str = "INFO"
-    # Backend settings
-    BACKEND_URL: str = "http://backend:8000"
 
     # Database settings
     POSTGRES_DB: str | None = None
