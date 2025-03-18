@@ -342,7 +342,6 @@ class Message(models.Model):
         blank=True,
         help_text=_("The ID of the tool call this message is a response to"),
     )
-
     tool_call_name = models.CharField(
         max_length=255,
         null=True,

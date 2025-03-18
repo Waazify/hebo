@@ -105,13 +105,10 @@ class ThreadManager:
 
         # We add a dot to the end of the conversation to make sure the last agent message is not skipped.
         # TODO: This is a hack. We should find a better way to do this.
-        messages.append(Message(
+        messages.append(
+            Message(
                 message_type=MessageType.HUMAN,
-                content=[
-                    MessageContent(
-                        type=MessageContentType.TEXT, text="."
-                    )
-                ],
+                content=[MessageContent(type=MessageContentType.TEXT, text=".")],
                 thread_id=thread.id,
                 created_at=datetime.now(messages[-1].created_at.tzinfo),
             )
@@ -171,7 +168,7 @@ class ThreadManager:
 
         for content in message_request.content:
             content_type = self._get_content_type(content)
-            if content_type not in ["text", "image"]:
+            if content_type not in ["text", "image", "image_url"]:
                 return await self._handle_unsupported_message(content_type, thread_id)
 
         message = Message(

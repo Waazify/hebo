@@ -21,16 +21,16 @@ class Thread(BaseModel):
 class MessageContentType(Enum):
     TEXT = "text"
     IMAGE = "image"
-    TOOL_USE = "tool_use"
     IMAGE_URL = "image_url"
+    TOOL_USE = "tool_use"
     ERROR = "error"
 
 
 class MessageContent(BaseModel):
     type: MessageContentType
     text: Optional[str] = None
-    image_url: Optional[str] = None
-    image_encoding: Optional[str] = None
+    image_data: Optional[str] = None  # Base64 encoded image data
+    image_url: Optional[str | dict] = None
     # for tool use
     name: Optional[str] = None
     input: Optional[dict] = None
