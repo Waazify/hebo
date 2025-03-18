@@ -478,15 +478,30 @@
       x-init="initializeChat()"
     >
       <!-- Add chat header with close button -->
-      <div class="flex-none border-b bg-base-100 p-4 flex justify-between items-center">
-        <h3 class="text-sm font-medium">Your ID: <span class="font-mono" x-text="contactId"></span></h3>
-        <button 
+      <div
+        class="flex-none border-b bg-base-100 p-4 flex justify-between items-center"
+      >
+        <h3 class="text-sm font-medium">
+          Your ID: <span class="font-mono" x-text="contactId"></span>
+        </h3>
+        <button
           @click="closeThread()"
           class="btn btn-sm btn-ghost gap-2"
           :disabled="isClosing || !threadId"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M6 18L18 6M6 6l12 12"
+            />
           </svg>
           <span x-text="isClosing ? 'Closing...' : 'Close Thread'"></span>
         </button>
@@ -514,7 +529,41 @@
               <div class="flex w-full flex-col">
                 <!-- Regular message content -->
                 <template x-if="message.message_type !== 'comment'">
-                  <p class="max-w-3xl" x-text="message.content"></p>
+                  <div class="space-y-2">
+                    <template
+                      x-for="(content, index) in Array.from(message.content)"
+                      :key="index"
+                    >
+                      <div>
+                        <!-- Text content -->
+                        <template x-if="content.type === 'text'">
+                          <p class="max-w-3xl" x-text="content.text"></p>
+                        </template>
+
+                        <!-- Image content - for human messages -->
+                        <template x-if="content.type === 'image'">
+                          <div class="max-w-3xl">
+                            <div>
+                              <img
+                                :src="content.image_data"
+                                class="max-h-64 rounded-lg"
+                              />
+                            </div>
+                          </div>
+                        </template>
+
+                        <!-- Image content - for AI responses -->
+                        <template x-if="content.type === 'image_url'">
+                          <div class="max-w-3xl">
+                            <img
+                              :src="PROXY_SERVER_BASE_URL + content.image_url"
+                              class="max-h-64 rounded-lg"
+                            />
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                  </div>
                 </template>
 
                 <!-- Comment message with text and error -->
@@ -575,7 +624,18 @@
               rows="2"
             ></textarea>
             <div class="absolute bottom-2 left-2">
-              <button class="btn btn-ghost btn-sm">
+              <input
+                type="file"
+                accept="image/*"
+                class="hidden"
+                x-ref="imageInput"
+                @change="handleImageUpload($event)"
+              />
+              <button
+                @click="$refs.imageInput.click()"
+                class="btn btn-ghost btn-sm"
+                :disabled="isLoading"
+              >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   class="h-5 w-5"
@@ -596,7 +656,7 @@
               <button
                 @click="sendMessage()"
                 class="btn btn-ghost btn-sm"
-                :disabled="isLoading || !newMessage.trim()"
+                :disabled="isLoading || (!newMessage.trim() && !selectedImage)"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -610,6 +670,32 @@
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Image preview -->
+          <div x-show="selectedImage" class="mt-2">
+            <div class="relative inline-block">
+              <img :src="selectedImage" class="max-h-32 rounded-lg" />
+              <button
+                @click="selectedImage = null"
+                class="absolute -top-2 -right-2 btn btn-circle btn-xs btn-error"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M6 18L18 6M6 6l12 12"
                   />
                 </svg>
               </button>
@@ -698,13 +784,18 @@
     isLoading: false,
     isClosing: false,
     error: null,
+    selectedImage: null,
+    imageFile: null,
 
     generateContactId() {
       // Generate a random string of 8 characters (numbers and lowercase letters)
-      const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
-      return 'chat_' + Array.from(crypto.getRandomValues(new Uint8Array(8)))
-        .map(x => chars[x % chars.length])
-        .join('');
+      const chars = "0123456789abcdefghijklmnopqrstuvwxyz";
+      return (
+        "chat_" +
+        Array.from(crypto.getRandomValues(new Uint8Array(8)))
+          .map((x) => chars[x % chars.length])
+          .join("")
+      );
     },
 
     async createNewThread() {
@@ -738,24 +829,72 @@
       await this.createNewThread();
     },
 
+    async handleImageUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        alert("Please select an image file");
+        return;
+      }
+
+      // Validate file size (3MB limit)
+      if (file.size > 3 * 1024 * 1024) {
+        alert("Image size should be less than 3MB");
+        return;
+      }
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        this.selectedImage = e.target.result;
+        this.imageFile = file;
+      };
+      reader.onerror = (e) => {
+        console.error("FileReader error:", e);
+      };
+      reader.readAsDataURL(file);
+    },
+
     async sendMessage() {
-      if (!this.newMessage.trim()) return;
-      
+      if (!this.newMessage.trim() && !this.selectedImage) return;
+
       // If we don't have a thread ID, try to create a new thread first
       if (!this.threadId) {
         const success = await this.createNewThread();
         if (!success) return;
       }
 
+      const messageContent = [];
+
+      // Add text content if present
+      if (this.newMessage.trim()) {
+        messageContent.push({
+          type: "text",
+          text: this.newMessage,
+        });
+      }
+
+      // Add image content if present
+      if (this.selectedImage && this.imageFile) {
+        messageContent.push({
+          type: "image",
+          image_data: this.selectedImage,
+        });
+      }
+
       const userMessage = {
         id: Date.now(),
         message_type: "human",
-        content: this.newMessage,
+        content: messageContent,
         timestamp: new Date().toLocaleTimeString(),
       };
       this.messages.push(userMessage);
       const messageText = this.newMessage;
       this.newMessage = "";
+      this.selectedImage = null;
+      this.imageFile = null;
       this.isLoading = true;
       this.error = null;
       this.scrollToBottom();
@@ -767,7 +906,7 @@
             method: "POST",
             body: JSON.stringify({
               message_type: "human",
-              content: [{ type: "text", text: messageText }],
+              content: messageContent,
             }),
           }
         );
@@ -819,23 +958,16 @@
 
                 // Process each complete message that should be sent
                 if (parsed.should_send && parsed.message) {
-                  // Collect all text content from the message
-                  const textContent = parsed.message.content
-                    .filter((item) => item.type === "text")
-                    .map((item) => item.text)
-                    .join("");
 
-                  if (textContent) {
-                    // Create a new message for each complete response
-                    const newMessage = {
-                      id: Date.now() + Math.random(),
-                      message_type: parsed.message.message_type,
-                      content: textContent,
-                      timestamp: new Date().toLocaleTimeString(),
-                    };
-                    this.messages.push(newMessage);
-                    this.scrollToBottom();
-                  }
+                  // Create a new message with the complete content array
+                  const newMessage = {
+                    id: Date.now() + Math.random(),
+                    message_type: parsed.message.message_type,
+                    content: parsed.message.content,
+                    timestamp: new Date().toLocaleTimeString(),
+                  };
+                  this.messages.push(newMessage);
+                  this.scrollToBottom();
                 }
 
                 // Handle comment messages (including errors) regardless of should_send flag
@@ -861,6 +993,7 @@
                 }
               } catch (e) {
                 console.error("Stream parse error", e);
+                console.error("Failed to parse line:", line);
               }
             }
           }
@@ -876,7 +1009,7 @@
 
     async closeThread() {
       if (!this.threadId || this.isClosing) return;
-      
+
       this.isClosing = true;
       try {
         const response = await fetchWithErrorHandling(
@@ -886,7 +1019,7 @@
           }
         );
         const data = await response.json();
-        
+
         // Create a new info message with the close summary
         const closeMessage = {
           id: Date.now() + Math.random(),
@@ -895,18 +1028,18 @@
           error: null,
           timestamp: new Date().toLocaleTimeString(),
         };
-        
+
         // If there's a summary, add it to the message
         if (data.summary) {
           closeMessage.text += "\n\nThread Summary:\n" + data.summary;
         }
-        
+
         this.messages.push(closeMessage);
         this.scrollToBottom();
-        
+
         // Create a new thread immediately after closing
         await this.createNewThread();
-        
+
         // Add a system message indicating a new thread was created
         const newThreadMessage = {
           id: Date.now() + Math.random(),
@@ -917,7 +1050,6 @@
         };
         this.messages.push(newThreadMessage);
         this.scrollToBottom();
-        
       } catch (err) {
         console.error("Close thread error:", err);
         const errorMessage = {
