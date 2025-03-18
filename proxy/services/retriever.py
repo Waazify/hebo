@@ -2,7 +2,7 @@ import logging
 import json
 from typing import List
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from db.vectorstore import VectorStore
 from schemas.ai import Session
@@ -78,7 +78,7 @@ class Retriever:
 
     async def get_relevant_sources(
         self,
-        messages: List[AIMessage | BaseMessage | HumanMessage | ToolMessage],
+        messages: List[BaseMessage],
         session: Session,
     ):
         """Get relevant sources based on conversation messages.
@@ -95,7 +95,7 @@ class Retriever:
         """
         try:
             # Filter out tool messages
-            filtered_messages = [
+            filtered_messages: List[BaseMessage] = [
                 msg for msg in messages if isinstance(msg, (AIMessage, HumanMessage))
             ]
 
@@ -164,12 +164,7 @@ class Retriever:
             return (
                 "\n\n".join([vector.source for vector in knowledge_vectors])
                 + "\n\n<examples>"
-                + "".join(
-                    [
-                        f"\n\n{vector.source}"
-                        for vector in example_vectors
-                    ]
-                )
+                + "".join([f"\n\n{vector.source}" for vector in example_vectors])
                 + "\n\n</examples>"
             )
 
@@ -179,7 +174,7 @@ class Retriever:
 
     def _reduce_to_query(
         self,
-        messages: List[AIMessage | HumanMessage],
+        messages: List[BaseMessage],
         session: Session,
         agent_settings: AgentSetting,
     ) -> str:

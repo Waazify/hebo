@@ -4,7 +4,7 @@ import signal
 from contextlib import asynccontextmanager
 
 import asyncpg
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
@@ -13,23 +13,24 @@ from auth.middleware import APIKeyMiddleware
 from config import settings
 from db.database import wait_for_database_connection
 from services import HEBO
-from services.middleware import TaskTracker, TaskTrackerMiddleware
-from schemas.knowledge import (
-    CreateVectorRequest,
-    CreateVectorResponse,
+from services.middleware import (
+    TaskTracker,
+    TaskTrackerMiddleware,
+    MaxBodySizeMiddleware,
 )
+from services.thread_manager import ThreadManager
+from services.vector_manager import VectorManager
+from schemas.knowledge import CreateVectorRequest, CreateVectorResponse
 from schemas.server import HealthResponse
 from schemas.threads import (
     AddMessageRequest,
     AddMessageResponse,
+    CloseThreadResponse,
     CreateThreadRequest,
     CreateThreadResponse,
-    CloseThreadResponse,
     RemoveMessageResponse,
     RunRequest,
 )
-from services.thread_manager import ThreadManager
-from services.vector_manager import VectorManager
 
 from __version__ import __version__
 
@@ -119,9 +120,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add API Key middleware before TaskTracker middleware
 app.add_middleware(APIKeyMiddleware)
 app.add_middleware(TaskTrackerMiddleware)
+app.add_middleware(MaxBodySizeMiddleware, max_size=3 * 1024 * 1024)  # 3MB limit
 
 
 @app.get("/health", response_model=HealthResponse, tags=["monitoring"])
