@@ -2,7 +2,8 @@ import asyncio
 import logging
 
 from fastapi import Request
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
 
 logger = logging.getLogger(__name__)
 
@@ -40,3 +41,22 @@ class TaskTrackerMiddleware(BaseHTTPMiddleware):
         finally:
             await request.app.state.task_tracker.remove_task()
 
+
+class MaxBodySizeMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, max_size: int = 1024 * 1024):  # Default 1MB
+        super().__init__(app)
+        self.max_size = max_size
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        if request.method in ["POST", "PUT", "PATCH"]:
+            content_length = int(request.headers.get("content-length", 0))
+            if content_length > self.max_size:
+                return Response(
+                    status_code=413,
+                    content="Request body too large. Maximum size is {} bytes".format(
+                        self.max_size
+                    ),
+                )
+        return await call_next(request)
