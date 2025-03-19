@@ -178,7 +178,9 @@ class ThreadManager:
             created_at=datetime.now(),
         )
 
-        return await self._add_message(message)
+        message = await self._add_message(message)
+        await self.db.expire_runs(thread_id, organization_id)
+        return message
 
     async def remove_message(
         self, message_id: int, thread_id: int, organization_id: str
@@ -268,10 +270,15 @@ class ThreadManager:
             # TODO: refactor the following: we can reduce code duplication here.
             # TODO: Hint: raise colleague handoff exception if the last message is not human.
             if not messages or messages[-1].message_type != MessageType.HUMAN:
-                logger.info("Last message: %s", messages[-1] if messages else None)
+                run_status = await self._get_run_status(run_id, organization_id)
+                run_status = (
+                    RunStatus.COMPLETED
+                    if run_status in [RunStatus.CREATED, RunStatus.RUNNING]
+                    else run_status
+                )
                 run_response = RunResponse(
                     agent_version=run_request.agent_version,
-                    status=RunStatus.COMPLETED,
+                    status=run_status,
                     message=BaseMessage(
                         message_type=MessageType.COMMENT,
                         content=[
@@ -283,7 +290,7 @@ class ThreadManager:
                     ),
                 )
                 await self.db.update_run_status(
-                    run_id, RunStatus.COMPLETED.value, organization_id
+                    run_id, run_status.value, organization_id
                 )
                 yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
                 message = Message(
@@ -296,7 +303,7 @@ class ThreadManager:
                     ],
                     created_at=datetime.now(),
                     thread_id=thread.id,
-                    run_status=RunStatus.COMPLETED,
+                    run_status=run_status,
                 )
                 await self._add_message(message)
                 return
@@ -528,9 +535,19 @@ class ThreadManager:
 
             logger.warning("Handing off thread because of Exception.")
 
+            run_status = RunStatus.ERROR
+            if run_id:
+                run_status = await self._get_run_status(run_id, organization_id)
+                run_status = (
+                    RunStatus.ERROR
+                    if run_status not in [RunStatus.CREATED, RunStatus.RUNNING]
+                    else run_status
+                )
+                await self.db.update_run_status(run_id, run_status.value, organization_id)
+
             run_response = RunResponse(
                 agent_version=run_request.agent_version,
-                status=RunStatus.ERROR,
+                status=run_status,
                 message=BaseMessage(
                     message_type=MessageType.COMMENT,
                     content=[
@@ -549,10 +566,6 @@ class ThreadManager:
                     ],
                 ),
             )
-            if run_id:
-                await self.db.update_run_status(
-                    run_id, RunStatus.ERROR.value, organization_id
-                )
             yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
             message = Message(
                 message_type=MessageType.COMMENT,
@@ -572,7 +585,7 @@ class ThreadManager:
                 ],
                 created_at=datetime.now(),
                 thread_id=thread.id,
-                run_status=RunStatus.ERROR,
+                run_status=run_status,
             )
             await self._add_message(message)
             return

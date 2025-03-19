@@ -53,6 +53,8 @@ services:
       POSTGRES_USER: hebo
       POSTGRES_PASSWORD: hebo
       POSTGRES_DB: hebo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - hebo_network
 

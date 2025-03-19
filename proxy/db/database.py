@@ -424,6 +424,13 @@ class DB:
         result = await self.conn.execute(query, status, run_id, organization_id)
         return "UPDATE 1" in result
 
+    @db_operation
+    async def expire_runs(self, thread_id: int, organization_id: str) -> bool:
+        """Expire all runs for a thread"""
+        query = "UPDATE threads_run SET status = 'expired' WHERE thread_id = $1 AND organization_id = $2"
+        result = await self.conn.execute(query, thread_id, organization_id)
+        return "UPDATE 1" in result
+
 
 async def wait_for_database_connection(db_conn):
     """Utility function to wait for database connection"""
