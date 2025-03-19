@@ -429,6 +429,20 @@ class ThreadManager:
                 message_parts = self._split_message(reply.content)
                 for i, part in enumerate(message_parts):
                     if part.text:
+                        if (
+                            await self._get_run_status(run_id, organization_id)
+                            == RunStatus.CREATED
+                        ):
+                            await self.db.update_run_status(
+                                run_id, RunStatus.RUNNING.value, organization_id
+                            )
+                            run_response = RunResponse(
+                                agent_version=run_request.agent_version,
+                                status=RunStatus.RUNNING,
+                            )
+                            yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
+                            logger.info("Run %s running", run_id)
+
                         if not re.search(r"call \w+ tool", part.text):
                             # Calculate delay based on word count and reading speed
                             word_count = len(part.text.split())
@@ -439,28 +453,17 @@ class ThreadManager:
                             await asyncio.sleep(
                                 max(0, delay) if agent_settings.delay else 0
                             )
-
-                            if (
-                                await self._get_run_status(run_id, organization_id)
-                                == RunStatus.CREATED
-                            ):
-                                await self.db.update_run_status(
-                                    run_id, RunStatus.RUNNING.value, organization_id
-                                )
-                                run_response = RunResponse(
-                                    agent_version=run_request.agent_version,
-                                    status=RunStatus.RUNNING,
-                                )
-                                yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
-
                             base_message = BaseMessage(
                                 message_type=message_type,
                                 content=[part],
                             )
-                            logger.info("send message to user")
                             run_status = await self._get_run_status(
                                 run_id, organization_id
                             )
+
+                            if run_status != RunStatus.RUNNING:
+                                should_send = False
+
                             run_response = RunResponse(
                                 agent_version=run_request.agent_version,
                                 status=run_status,
