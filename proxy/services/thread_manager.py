@@ -656,7 +656,7 @@ class ThreadManager:
 
         if len(messages) > 1:
             if messages[-2].message_type == MessageType.TOOL_ANSWER:
-                tool_name = f" {messages[-2].content[0].name}"
+                tool_name = f" {messages[-2].tool_call_name}"
                 messages[-2].content.append(
                     MessageContent(
                         type=MessageContentType.TEXT,
