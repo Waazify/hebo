@@ -35,7 +35,7 @@ class AgentSettingAdmin(ModelAdmin):
 
 @admin.register(Tool)
 class ToolAdmin(ModelAdmin):
-    list_display = ["name", "description", "tool_type"]
+    list_display = ["name", "description"]
     search_fields = ["name", "description"]
 
 

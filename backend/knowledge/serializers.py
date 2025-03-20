@@ -6,4 +6,4 @@ from knowledge.models import Page
 class PageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Page
-        fields = ["id", "title", "content", "created_at", "updated_at", "position"]
+        fields = ["title", "content", "created_at", "updated_at", "position"]

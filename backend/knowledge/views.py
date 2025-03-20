@@ -19,8 +19,8 @@ from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
-from core.mixins import OrganizationPermissionMixin
 from core.authentication import APIKeyAuthentication
+from core.mixins import OrganizationPermissionMixin
 from versions.models import Version, VersionSlug
 from .forms import PageForm
 from .models import Page

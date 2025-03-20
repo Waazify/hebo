@@ -300,10 +300,6 @@ class ToolManager(OrganizationManagerMixin, models.Manager):
 
 
 class Tool(models.Model):
-    class ToolType(models.TextChoices):
-        ACTION = "action", "Action"
-        DATA_SOURCE = "data_source", "Data Source"
-
     agent_setting = models.ForeignKey(
         AgentSetting,
         on_delete=models.CASCADE,
@@ -312,13 +308,11 @@ class Tool(models.Model):
     )
     name = models.CharField(max_length=200)
     description = models.TextField(help_text="Description of what the tool does")
-    output_template = models.TextField(help_text="Template to format the tool's output")
-    tool_type = models.CharField(
-        max_length=20, choices=ToolType.choices, default=ToolType.ACTION
+    input_schema = models.JSONField(
+        default=dict,
+        help_text="JSON schema for the tool's input parameters",
     )
-
-    # Action-specific fields
-    openapi_url = models.URLField(
+    url = models.URLField(
         blank=True, null=True, help_text="OpenAPI URL for Action type tools"
     )
     auth_token = models.CharField(
@@ -328,45 +322,12 @@ class Tool(models.Model):
         help_text="Optional authentication token for API",
     )
 
-    # Data Source-specific fields
-    db_connection_string = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        help_text="Database connection string for Data Source type tools",
-    )
-    query = models.TextField(
-        blank=True,
-        null=True,
-        help_text="Query to execute for Data Source type tools",
-    )
-
     objects = ToolManager()
 
     class Meta:
         indexes = [
             models.Index(fields=["agent_setting"]),
         ]
-
-    def clean(self):
-        from django.core.exceptions import ValidationError
-
-        if self.tool_type == self.ToolType.ACTION and not self.openapi_url:
-            raise ValidationError(
-                {"openapi_url": "OpenAPI URL is required for Action type tools"}
-            )
-
-        if self.tool_type == self.ToolType.DATA_SOURCE:
-            if not self.db_connection_string:
-                raise ValidationError(
-                    {
-                        "db_connection_string": "Database connection string is required for Data Source type tools"
-                    }
-                )
-            if not self.query:
-                raise ValidationError(
-                    {"query": "Query is required for Data Source type tools"}
-                )
 
     def save(self, *args, **kwargs):
         # Allow bypassing version check if explicitly specified
