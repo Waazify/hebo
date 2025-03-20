@@ -12,8 +12,9 @@ class OrganizationPermissionMixin:
     org_model = Organization
     org_context_name = "organization"
     owner_required = False  # Set to True for owner-only actions
-    require_organization = True  # Set to False for views that can work without an organization
-
+    require_organization = (
+        True  # Set to False for views that can work without an organization
+    )
 
     def get_org_model(self):
         return self.org_model
@@ -26,8 +27,6 @@ class OrganizationPermissionMixin:
     def organization(self) -> Organization:
         organization_pk = self.kwargs.get("organization_pk", None)  # type: ignore
         return get_object_or_404(self.get_org_model(), pk=organization_pk)
-
-
 
     def get_organization(self) -> Organization | None:
         """Get organization from URL parameters"""

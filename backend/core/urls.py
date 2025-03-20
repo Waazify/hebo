@@ -17,8 +17,10 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
-from core.views import home, health_check, CustomSignupView
 from schema_graph.views import Schema
+
+from core.api import router as api_router
+from core.views import home, health_check, CustomSignupView
 
 urlpatterns = [
     path("", home, name="home"),
@@ -31,6 +33,11 @@ urlpatterns = [
     path("organizations/", include("hebo_organizations.urls")),
     path("organizations/<str:organization_pk>/knowledge/", include("knowledge.urls")),
     path("organizations/<str:organization_pk>/versions/", include("versions.urls")),
-    path("organizations/<str:organization_pk>/agent_settings/", include("agent_settings.urls")),
+    path(
+        "organizations/<str:organization_pk>/agent_settings/",
+        include("agent_settings.urls"),
+    ),
     path("organizations/<str:organization_pk>/api-keys/", include("api_keys.urls")),
+    # API endpoints
+    path("api/", include(api_router.urls)),
 ]

@@ -16,11 +16,15 @@ from django.views.generic import (
     UpdateView,
 )
 from django.db import transaction
+from rest_framework import viewsets
+from rest_framework.exceptions import ValidationError
 
 from core.mixins import OrganizationPermissionMixin
-from versions.models import Version
+from core.authentication import APIKeyAuthentication
+from versions.models import Version, VersionSlug
 from .forms import PageForm
 from .models import Page
+from .serializers import PageSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -276,3 +280,43 @@ class PageDeleteView(LoginRequiredMixin, OrganizationPermissionMixin, DeleteView
             "knowledge_list",
             kwargs={"organization_pk": self.organization.pk},
         )
+
+
+class PageViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for accessing pages.
+    Requires X-API-Key authentication and supports filtering by agent_slug.
+    """
+
+    serializer_class = PageSerializer
+    authentication_classes = [APIKeyAuthentication]
+    permission_classes = []
+
+    def get_queryset(self):
+        # Get organization from authentication
+        organization = self.request.auth  # type: ignore
+
+        # Get agent_slug from query params
+        agent_version = self.request.query_params.get("agent_version")  # type: ignore
+        if not agent_version:
+            raise ValidationError("agent_version query parameter is required")
+
+        # Get version from agent_slug
+        try:
+            version_slug = VersionSlug.objects.get(slug=agent_version)
+            version = version_slug.version
+        except VersionSlug.DoesNotExist:
+            raise ValidationError(
+                f"No version found for agent_version: {agent_version}"
+            )
+
+        # Filter pages by organization and version
+        return Page.objects.filter(organization=organization, version=version).order_by(
+            "position"
+        )
+
+    def list(self, request, *args, **kwargs):
+        """
+        List all pages for the authenticated organization and specified agent_slug.
+        """
+        return super().list(request, *args, **kwargs)
