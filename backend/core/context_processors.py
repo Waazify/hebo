@@ -89,7 +89,9 @@ def organization_context(request):
 
                         if version_slug:
                             context["selected_version_slug"] = version_slug.slug
-                            request.session["selected_version_slug_id"] = version_slug.pk
+                            request.session["selected_version_slug_id"] = (
+                                version_slug.pk
+                            )
 
             except (Agent.DoesNotExist, ValueError):
                 pass

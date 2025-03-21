@@ -126,14 +126,14 @@ async def get_content_from_human_message(message: Message) -> list:
     for image in images:
         if image:
             # Ensure image is under size limit
-            # compressed_image = _ensure_image_size_limit(image)
+            # compressed_image = _ensure_image_size_limit(image)
             content.append(_image_data_body(image))
 
     for url in urls:
         if url and isinstance(url, str):
             encoded_image = await _encode_image_from_url(url)
             # Ensure downloaded image is under size limit
-            # compressed_image = _ensure_image_size_limit(encoded_image)
+            # compressed_image = _ensure_image_size_limit(encoded_image)
             content.append(_image_url_body(encoded_image))
 
     for text in texts:

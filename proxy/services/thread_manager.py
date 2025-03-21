@@ -72,7 +72,6 @@ class ThreadManager:
     async def _generate_summary(
         self, thread: Thread, organization_id: str
     ) -> str | None:
-
         if not thread.id:
             return None
 
@@ -160,7 +159,6 @@ class ThreadManager:
         thread_id: int,
         organization_id: str,
     ) -> Message:
-
         thread = await self.db.get_thread(thread_id, organization_id)
 
         if not thread:
@@ -196,7 +194,6 @@ class ThreadManager:
     def _messages_to_llm_conversation(
         self, messages: List[Message]
     ) -> List[LangchainBaseMessage]:
-
         llm_conversation: List[LangchainBaseMessage] = []
 
         # Merge messages
@@ -546,7 +543,9 @@ class ThreadManager:
                     if run_status not in [RunStatus.CREATED, RunStatus.RUNNING]
                     else run_status
                 )
-                await self.db.update_run_status(run_id, run_status.value, organization_id)
+                await self.db.update_run_status(
+                    run_id, run_status.value, organization_id
+                )
 
             run_response = RunResponse(
                 agent_version=run_request.agent_version,
@@ -608,7 +607,6 @@ class ThreadManager:
         run_status: RunStatus,
         hide_tool_messages: bool = False,
     ) -> bool:
-
         if run_status in [RunStatus.ERROR, RunStatus.EXPIRED, RunStatus.COMPLETED]:
             return False
 
@@ -720,9 +718,9 @@ class ThreadManager:
                 elif message.message_type == "human_agent":
                     curr_content = message.content
                     if curr_content[0].type == "text":
-                        message.content[0].text = (
-                            f"Human colleague: {curr_content[0].text}"
-                        )
+                        message.content[
+                            0
+                        ].text = f"Human colleague: {curr_content[0].text}"
                     else:
                         message.content.insert(
                             0,
@@ -736,9 +734,9 @@ class ThreadManager:
                         added_first_human_message = True
                         curr_content = message.content
                         if curr_content[0].type == "text":
-                            message.content[0].text = (
-                                f"(first message) {curr_content[0].text}"
-                            )
+                            message.content[
+                                0
+                            ].text = f"(first message) {curr_content[0].text}"
                         else:
                             message.content.insert(
                                 0,
@@ -791,7 +789,6 @@ class ThreadManager:
         )
 
     async def _format_message(self, message: Message) -> Message:
-
         format_message_map = {
             MessageType.AI: self._format_ai_message,
             MessageType.HUMAN: self._format_human_message,

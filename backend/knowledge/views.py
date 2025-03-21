@@ -360,7 +360,8 @@ class PageViewSet(viewsets.ModelViewSet):
 
         # Create a set of content hashes from the request for quick lookup
         request_content = {
-           page["content"] for page in validated_data  # type: ignore
+            page["content"]
+            for page in validated_data  # type: ignore
         }
 
         # Initialize operation report
@@ -379,7 +380,9 @@ class PageViewSet(viewsets.ModelViewSet):
                 # Update or create pages
                 for page_data in validated_data:  # type: ignore
                     # Try to find existing page with matching content
-                    existing_page = queryset.filter(content=page_data["content"]).first()
+                    existing_page = queryset.filter(
+                        content=page_data["content"]
+                    ).first()
 
                     if existing_page:
                         # Update existing page

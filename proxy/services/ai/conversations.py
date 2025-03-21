@@ -52,7 +52,9 @@ def execute_conversation(
     tools = (
         tools
         if isinstance(tools, List)
-        else agent_settings.tools if agent_settings else None
+        else agent_settings.tools
+        if agent_settings
+        else None
     )
 
     logger.debug(f"Executing conversation. Recursion depth: {recursion_depth}")
@@ -81,9 +83,10 @@ def execute_conversation(
         )
 
     if recursion_depth == 0:
-
         conversation = [
-            SystemMessage(content=get_system_prompt(context, behaviour, history_summaries))
+            SystemMessage(
+                content=get_system_prompt(context, behaviour, history_summaries)
+            )
         ] + conversation
 
     if not llm and agent_settings:

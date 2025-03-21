@@ -6,7 +6,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("knowledge", "0002_remove_part_unique_part_identifier_per_page_and_more"),
     ]

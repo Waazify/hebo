@@ -6,7 +6,6 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("knowledge", "0003_remove_vectorstore_unique_vector_per_part_and_more"),
     ]

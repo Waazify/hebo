@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("hebo_organizations", "0001_initial"),
         ("versions", "0001_initial"),

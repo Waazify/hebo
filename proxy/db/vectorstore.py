@@ -34,7 +34,9 @@ class VectorStore:
 
         # TODO: Add support for other embeddings providers
         if len(vector.vector) != 1024:
-            logger.error(f"Invalid vector dimensions: {len(vector.vector)} (expected 1024)")
+            logger.error(
+                f"Invalid vector dimensions: {len(vector.vector)} (expected 1024)"
+            )
             raise ValueError("Embedding must be 1024 dimensions")
 
         # Convert the embedding list to a string format that pgvector expects
@@ -42,7 +44,9 @@ class VectorStore:
 
         try:
             async with self.conn.transaction():
-                logger.info(f"Beginning database transaction for part_id: {vector.part_id}")
+                logger.info(
+                    f"Beginning database transaction for part_id: {vector.part_id}"
+                )
                 id = await self.conn.fetchval(
                     # TODO: we are using vector_1024 (1024 is the vector dimension) for all models, we should add support for other models
                     """
@@ -58,7 +62,9 @@ class VectorStore:
                     json.dumps(vector.metadata),
                 )
                 if id is None:
-                    logger.error(f"Failed to insert vector for part_id: {vector.part_id}")
+                    logger.error(
+                        f"Failed to insert vector for part_id: {vector.part_id}"
+                    )
                     raise ValueError("Failed to insert vector into database")
                 return id
         except Exception as e:

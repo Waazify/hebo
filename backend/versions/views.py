@@ -116,7 +116,9 @@ class SetActiveVersionView(LoginRequiredMixin, View):
     def get(self, request, organization_pk, agent_pk, version_pk):
         agent = get_object_or_404(Agent, pk=agent_pk, organization_id=organization_pk)
         version = get_object_or_404(Version, pk=version_pk, agent=agent)
-        version_slug = get_object_or_404(VersionSlug, slug=f"{agent.slug}:{version.name}")
+        version_slug = get_object_or_404(
+            VersionSlug, slug=f"{agent.slug}:{version.name}"
+        )
 
         # Store in session
         request.session["selected_agent_id"] = agent.pk
@@ -124,7 +126,9 @@ class SetActiveVersionView(LoginRequiredMixin, View):
         request.session["selected_version_slug_id"] = version_slug.pk
 
         # Create redirect URL
-        redirect_url = f"{reverse('knowledge_list', kwargs={'organization_pk': organization_pk})}"
+        redirect_url = (
+            f"{reverse('knowledge_list', kwargs={'organization_pk': organization_pk})}"
+        )
 
         response = HttpResponse(status=200)
         response["HX-Redirect"] = redirect_url

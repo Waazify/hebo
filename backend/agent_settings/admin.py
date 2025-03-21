@@ -30,6 +30,7 @@ class AgentSettingAdmin(ModelAdmin):
 
     def version_slugs(self, obj):
         return ", ".join([slug.slug for slug in obj.version.slugs.all()])
+
     version_slugs.short_description = "Version Slugs"
 
 

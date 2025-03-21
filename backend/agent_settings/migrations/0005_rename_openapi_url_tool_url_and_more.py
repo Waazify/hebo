@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("agent_settings", "0004_agentsetting_include_last_24h_history"),
     ]

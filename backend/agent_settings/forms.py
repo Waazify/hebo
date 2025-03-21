@@ -24,7 +24,9 @@ class LLMAdapterForm(forms.ModelForm):
 
     def __init__(self, *args, organization=None, **kwargs):
         self.organization = organization
-        logger.debug("LLMAdapterForm.__init__: Received organization: %s", self.organization)
+        logger.debug(
+            "LLMAdapterForm.__init__: Received organization: %s", self.organization
+        )
         super().__init__(*args, **kwargs)
 
         # Make aws fields are required only for Bedrock provider
@@ -45,8 +47,12 @@ class LLMAdapterForm(forms.ModelForm):
         self.fields["api_base"].widget.attrs["class"] = "input input-bordered w-full"
         self.fields["name"].widget.attrs["class"] = "input input-bordered w-full"
         self.fields["aws_region"].widget.attrs["class"] = "input input-bordered w-full"
-        self.fields["aws_access_key_id"].widget.attrs["class"] = "input input-bordered w-full"
-        self.fields["aws_secret_access_key"].widget.attrs["class"] = "input input-bordered w-full"
+        self.fields["aws_access_key_id"].widget.attrs["class"] = (
+            "input input-bordered w-full"
+        )
+        self.fields["aws_secret_access_key"].widget.attrs["class"] = (
+            "input input-bordered w-full"
+        )
 
     def clean(self):
         cleaned_data = super().clean()

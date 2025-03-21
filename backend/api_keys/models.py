@@ -60,6 +60,4 @@ def create_initial_api_keys(sender, instance, created, **kwargs):
     Signal handler to create a first API key when a new Organization is created.
     """
     if created:
-        APIKey.objects.create(
-            organization=instance, name=f"{instance.name} API Key"
-        )
+        APIKey.objects.create(organization=instance, name=f"{instance.name} API Key")
