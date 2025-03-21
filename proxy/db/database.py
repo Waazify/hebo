@@ -300,8 +300,7 @@ class DB:
 
         # Get tools
         tools_query = """
-            SELECT id, agent_setting_id, name, description, output_template,
-                   tool_type, openapi_url, auth_token, db_connection_string, query
+            SELECT id, agent_setting_id, name, description, input_schema, url, auth_token
             FROM agent_settings_tool
             WHERE agent_setting_id = $1
         """

@@ -24,6 +24,20 @@ if TYPE_CHECKING:
     from django.db.models.manager import RelatedManager
 
 
+class ContentHashMixin:
+    """Mixin for models that need content hashing functionality."""
+
+    @staticmethod
+    def _generate_hash(content: str) -> str:
+        """Generate a hash for the given content."""
+        return sha256(content.encode()).hexdigest()
+
+    @property
+    def content_hash(self) -> str:
+        """Get the hash of the current content."""
+        return self._generate_hash(self.content)  # type: ignore
+
+
 class PartGenerationError(Exception):
     """Custom exception for part generation errors."""
 
@@ -34,7 +48,7 @@ class PageManager(OrganizationManagerMixin, models.Manager):
     pass
 
 
-class Page(models.Model):
+class Page(ContentHashMixin, models.Model):
     """
     Model for storing markdown-formatted pages.
 
@@ -96,6 +110,12 @@ class Page(models.Model):
         ordering = ["parent__id", "position", "-updated_at"]
         verbose_name = "Page"
         verbose_name_plural = "Pages"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["version", "parent", "position"],
+                name="unique_page_position_per_version_and_parent",
+            )
+        ]
 
     def save(self, *args, **kwargs):
         # Check if the version status allows editing
@@ -115,6 +135,7 @@ class Page(models.Model):
                 Page.objects.filter(parent=self.parent).order_by("-position").first()
             )
             self.position = (last_sibling.position + 1) if last_sibling else 0
+
         elif not self.position:
             # If no parent, put it at the end of root level pages
             last_root = (
@@ -180,7 +201,7 @@ class Page(models.Model):
                     "content": block_content,
                     "start_line": start_line,
                     "end_line": end_line,
-                    "content_hash": Part._generate_hash(block_content),
+                    "content_hash": self._generate_hash(block_content),
                     "content_type": content_type,
                 }
             )
@@ -211,7 +232,7 @@ class Page(models.Model):
                         "content": stripped_content,
                         "start_line": adj_start,
                         "end_line": adj_end,
-                        "content_hash": Part._generate_hash(stripped_content),
+                        "content_hash": self._generate_hash(stripped_content),
                         "content_type": ContentType.BEHAVIOUR,
                     }
                 )
@@ -225,7 +246,7 @@ class Page(models.Model):
                         "content": stripped_content,
                         "start_line": adj_start,
                         "end_line": adj_end,
-                        "content_hash": Part._generate_hash(stripped_content),
+                        "content_hash": self._generate_hash(stripped_content),
                         "content_type": ContentType.BEHAVIOUR,
                     }
                 )
@@ -244,7 +265,7 @@ class Page(models.Model):
                         "content": stripped_content,
                         "start_line": adj_start,
                         "end_line": adj_end,
-                        "content_hash": Part._generate_hash(stripped_content),
+                        "content_hash": self._generate_hash(stripped_content),
                         "content_type": ContentType.BEHAVIOUR,
                     }
                 )
@@ -263,7 +284,7 @@ class Page(models.Model):
                         "content": stripped_content,
                         "start_line": adj_start,
                         "end_line": adj_end,
-                        "content_hash": Part._generate_hash(stripped_content),
+                        "content_hash": self._generate_hash(stripped_content),
                         "content_type": ContentType.BEHAVIOUR,
                     }
                 )
@@ -431,7 +452,6 @@ class Part(models.Model):
         max_length=64,
         help_text="Hash of the original content section for tracking changes",
     )
-
     # Part metadata
     content_type = models.CharField(
         max_length=20, choices=ContentType.choices, db_index=True
@@ -681,12 +701,6 @@ class Part(models.Model):
             return
 
         return True
-
-    @staticmethod
-    def _generate_hash(content: str) -> str:
-        """Generates a hash for the given content."""
-
-        return sha256(content.encode()).hexdigest()
 
     def __str__(self):
         return f"{self.content_type}: {self.start_line} - {self.end_line} ({self.page.title})"

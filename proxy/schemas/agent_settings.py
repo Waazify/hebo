@@ -40,12 +40,9 @@ class Tool(BaseModel):
     agent_setting_id: int
     name: str = Field(max_length=200)
     description: str
-    output_template: str
-    tool_type: str = Field(max_length=20)
-    openapi_url: Optional[HttpUrl] = None
+    input_schema: dict
+    url: Optional[HttpUrl] = None
     auth_token: Optional[str] = Field(default=None, max_length=255)
-    db_connection_string: Optional[str] = Field(default=None, max_length=255)
-    query: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -8,10 +8,13 @@ from django.views.generic import (
     UpdateView,
 )
 from django.contrib import messages
-from django.db import models
+from django.db import models, transaction
 from django.http import JsonResponse, HttpResponseNotAllowed
-from rest_framework import viewsets
+from rest_framework import viewsets, status
 from rest_framework.exceptions import ValidationError
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django.db.utils import IntegrityError
 
 from core.authentication import APIKeyAuthentication
 from core.mixins import OrganizationPermissionMixin
@@ -238,11 +241,121 @@ class AgentSettingViewSet(viewsets.ModelViewSet):
         # Filter agent settings by organization and version
         return AgentSetting.objects.filter(organization=organization, version=version)
 
+    def get_serializer_context(self):
+        """Add version to serializer context."""
+        context = super().get_serializer_context()
+        agent_version = self.request.query_params.get("agent_version")  # type: ignore
+        if agent_version:
+            try:
+                version_slug = VersionSlug.objects.get(slug=agent_version)
+                context["version"] = version_slug.version
+            except VersionSlug.DoesNotExist:
+                pass
+        return context
+
     def list(self, request, *args, **kwargs):
         """
         List all agent settings for the authenticated organization and specified agent_slug.
         """
         return super().list(request, *args, **kwargs)
+
+    @action(detail=False, methods=["post"])
+    def bulk_update(self, request):
+        """
+        Bulk update agent settings for the current version.
+        Creates or updates LLM adapters and agent settings.
+        """
+        # Get queryset to ensure proper authentication and version lookup
+        queryset = self.get_queryset()
+        version = self.get_serializer_context().get("version")
+        organization = request.auth
+
+        # Validate request data
+        if not isinstance(request.data, list):
+            raise ValidationError("Request body must be a list of settings")
+
+        # Initialize operation report
+        report = {"created": [], "updated": [], "errors": []}
+
+        try:
+            with transaction.atomic():
+                for setting_data in request.data:
+                    # Process LLM adapters first
+                    adapters = {}
+                    for adapter_type in [
+                        "core_llm",
+                        "condense_llm",
+                        "embeddings",
+                        "vision_llm",
+                    ]:
+                        if adapter_data := setting_data.pop(adapter_type, None):
+                            # Try to find existing adapter with matching fields
+                            existing_adapter = LLMAdapter.objects.filter(
+                                organization=organization,
+                                model_type=adapter_data["model_type"],
+                                provider=adapter_data["provider"],
+                                name=adapter_data["name"],
+                                api_base=adapter_data.get("api_base", ""),
+                                aws_region=adapter_data.get("aws_region", ""),
+                                api_key=adapter_data.get("api_key", ""),
+                                aws_access_key_id=adapter_data.get(
+                                    "aws_access_key_id", ""
+                                ),
+                                aws_secret_access_key=adapter_data.get(
+                                    "aws_secret_access_key", ""
+                                ),
+                            ).first()
+
+                            if existing_adapter:
+                                adapters[adapter_type] = existing_adapter
+                            else:
+                                # Create new adapter
+                                adapter_data["organization"] = organization
+                                new_adapter = LLMAdapter.objects.create(**adapter_data)
+                                adapters[adapter_type] = new_adapter
+
+                    # Try to find existing setting
+                    existing_setting = queryset.first()
+
+                    if existing_setting:
+                        # Update existing setting with non-adapter fields
+                        for key, value in setting_data.items():
+                            if key not in ["organization", "version"]:
+                                setattr(existing_setting, key, value)
+
+                        # Update adapter fields
+                        for adapter_type, adapter in adapters.items():
+                            setattr(existing_setting, adapter_type, adapter)
+
+                        existing_setting.save()
+                        report["updated"].append({"id": existing_setting.id})  # type: ignore
+                    else:
+                        # Create new setting
+                        setting_data["organization"] = organization
+                        setting_data["version"] = version
+                        setting_data.update(adapters)
+                        new_setting = AgentSetting.objects.create(**setting_data)
+                        report["created"].append({"id": new_setting.id})  # type: ignore
+
+        except IntegrityError as e:
+            report["errors"].append({"type": "integrity_error", "message": str(e)})
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Bulk update failed due to validation errors",
+                    "report": report,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "status": "success",
+                "message": "Bulk update completed successfully",
+                "report": report,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class ToolViewSet(viewsets.ModelViewSet):
@@ -274,12 +387,88 @@ class ToolViewSet(viewsets.ModelViewSet):
 
         # Filter tools by agent_setting that matches the organization and version
         return Tool.objects.filter(
-            agent_setting__organization=organization,
-            agent_setting__version=version
+            agent_setting__organization=organization, agent_setting__version=version
         )
+
+    def get_serializer_context(self):
+        """Add version to serializer context."""
+        context = super().get_serializer_context()
+        agent_version = self.request.query_params.get("agent_version")  # type: ignore
+        if agent_version:
+            try:
+                version_slug = VersionSlug.objects.get(slug=agent_version)
+                context["version"] = version_slug.version
+            except VersionSlug.DoesNotExist:
+                pass
+        return context
 
     def list(self, request, *args, **kwargs):
         """
         List all tools for the authenticated organization and specified agent_slug.
         """
         return super().list(request, *args, **kwargs)
+
+    @action(detail=False, methods=["post"])
+    def bulk_update(self, request):
+        """
+        Bulk update tools for the current version.
+        Deletes existing tools and creates new ones.
+        Requires agent settings to exist for the version.
+        """
+        # Get queryset to ensure proper authentication and version lookup
+        queryset = self.get_queryset()
+        version = self.get_serializer_context().get("version")
+        organization = request.auth  # type: ignore
+
+        # Validate request data
+        if not isinstance(request.data, list):
+            raise ValidationError("Request body must be a list of tools")
+
+        # Check if agent settings exist
+        try:
+            agent_setting = AgentSetting.objects.get(
+                organization=organization, version=version
+            )
+        except AgentSetting.DoesNotExist:
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Agent settings must exist before updating tools",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Initialize operation report
+        report = {"created": [], "deleted": [], "errors": []}
+
+        try:
+            with transaction.atomic():
+                # Delete existing tools
+                deleted_count = queryset.delete()[0]
+                report["deleted"].append({"count": deleted_count})
+
+                # Create new tools
+                for tool_data in request.data:  # type: ignore
+                    tool_data["agent_setting"] = agent_setting
+                    new_tool = Tool.objects.create(**tool_data)
+                    report["created"].append({"id": new_tool.id})  # type: ignore
+
+        except IntegrityError as e:
+            report["errors"].append({"type": "integrity_error", "message": str(e)})
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Bulk update failed due to validation errors",
+                    "report": report,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "status": "success",
+                "message": "Bulk update completed successfully",
+                "report": report,
+            },
+            status=status.HTTP_200_OK,
+        )

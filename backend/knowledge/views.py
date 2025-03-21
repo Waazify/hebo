@@ -16,15 +16,18 @@ from django.views.generic import (
     UpdateView,
 )
 from django.db import transaction
-from rest_framework import viewsets
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from django.db.utils import IntegrityError
 
 from core.authentication import APIKeyAuthentication
 from core.mixins import OrganizationPermissionMixin
 from versions.models import Version, VersionSlug
 from .forms import PageForm
 from .models import Page
-from .serializers import PageSerializer
+from .serializers import PageSerializer, BulkPageSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -296,7 +299,7 @@ class PageViewSet(viewsets.ModelViewSet):
         # Get organization from authentication
         organization = self.request.auth  # type: ignore
 
-        # Get agent_slug from query params
+        # Get agent_version from query params
         agent_version = self.request.query_params.get("agent_version")  # type: ignore
         if not agent_version:
             raise ValidationError("agent_version query parameter is required")
@@ -311,12 +314,118 @@ class PageViewSet(viewsets.ModelViewSet):
             )
 
         # Filter pages by organization and version
-        return Page.objects.filter(organization=organization, version=version).order_by(
-            "position"
-        )
+        return Page.objects.filter(
+            organization=organization,
+            version=version,
+        ).order_by("position")
+
+    def get_serializer_context(self):
+        """Add version to serializer context."""
+        context = super().get_serializer_context()
+        agent_version = self.request.query_params.get("agent_version")  # type: ignore
+        if agent_version:
+            try:
+                version_slug = VersionSlug.objects.get(slug=agent_version)
+                context["version"] = version_slug.version
+            except VersionSlug.DoesNotExist:
+                pass
+        return context
 
     def list(self, request, *args, **kwargs):
         """
         List all pages for the authenticated organization and specified agent_slug.
         """
         return super().list(request, *args, **kwargs)
+
+    @action(detail=False, methods=["post"])
+    def bulk_update(self, request):
+        """
+        Bulk update pages for the current version.
+        Deletes pages not in the request, updates existing ones, and creates new ones.
+        """
+        # Get queryset to ensure proper authentication and version lookup
+        queryset = self.get_queryset()
+        version = self.get_serializer_context().get("version")
+
+        # Validate request data
+        if not isinstance(request.data, list):
+            raise ValidationError("Request body must be a list of pages")
+
+        # Initialize serializer with context
+        serializer = BulkPageSerializer(
+            data=request.data, many=True, context={"version": version}
+        )
+        serializer.is_valid(raise_exception=True)
+        validated_data = serializer.validated_data
+
+        # Create a set of content hashes from the request for quick lookup
+        request_content = {
+           page["content"] for page in validated_data  # type: ignore
+        }
+
+        # Initialize operation report
+        report = {"created": [], "updated": [], "deleted": [], "errors": []}
+
+        try:
+            with transaction.atomic():
+                # Delete pages not in the request
+                for page in queryset:
+                    if page.content not in request_content:
+                        page.delete()
+                        report["deleted"].append(
+                            {"id": page.id, "title": page.title}  # type: ignore
+                        )
+
+                # Update or create pages
+                for page_data in validated_data:  # type: ignore
+                    # Try to find existing page with matching content
+                    existing_page = queryset.filter(content=page_data["content"]).first()
+
+                    if existing_page:
+                        # Update existing page
+                        existing_page.title = page_data["title"]
+                        existing_page.position = page_data["position"]
+                        existing_page.save()
+                        report["updated"].append(
+                            {"id": existing_page.id, "title": existing_page.title}  # type: ignore
+                        )
+                    else:
+                        # Create new page
+                        new_page = Page.objects.create(
+                            organization=request.auth,  # type: ignore
+                            version=version,
+                            title=page_data["title"],
+                            content=page_data["content"],
+                            position=page_data["position"],
+                        )
+                        report["created"].append(
+                            {"id": new_page.id, "title": new_page.title}  # type: ignore
+                        )
+
+        except IntegrityError as e:
+            if "unique_page_position_per_version_and_parent" in str(e):
+                report["errors"].append(
+                    {
+                        "type": "position_conflict",
+                        "message": "A page with the same position already exists in this version",
+                    }
+                )
+            else:
+                report["errors"].append({"type": "integrity_error", "message": str(e)})
+            return Response(
+                {
+                    "status": "error",
+                    "message": "Bulk update failed due to validation errors",
+                    "report": report,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "status": "success",
+                "message": "Bulk update completed successfully",
+                "report": report,
+            },
+            status=status.HTTP_200_OK,
+        )
