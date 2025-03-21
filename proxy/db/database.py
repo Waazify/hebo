@@ -324,7 +324,18 @@ class DB:
         # Convert rows to objects
         adapters_dict = {row["id"]: LLMAdapter(**dict(row)) for row in adapters_rows}
 
-        tools = [Tool(**dict(row)) for row in tools_rows]
+        tools = [
+            Tool(
+                **{
+                    **dict(row),
+                    # Parse input_schema from JSON string to dict
+                    "input_schema": (
+                        json.loads(row["input_schema"]) if row["input_schema"] else None
+                    ),
+                }
+            )
+            for row in tools_rows
+        ]
 
         # Construct AgentSetting object
         return AgentSetting(
