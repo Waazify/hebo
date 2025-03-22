@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("agent_settings", "0005_rename_openapi_url_tool_url_and_more"),
     ]

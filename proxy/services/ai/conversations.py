@@ -57,7 +57,9 @@ async def execute_conversation(
     mcp_server_params = (
         mcp_server_params
         if isinstance(mcp_server_params, MCPParams)
-        else agent_settings.mcp_params if agent_settings else None
+        else agent_settings.mcp_params
+        if agent_settings
+        else None
     )
 
     logger.debug(f"Executing conversation. Recursion depth: {recursion_depth}")
