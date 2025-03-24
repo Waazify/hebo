@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 
+
 @asynccontextmanager
 async def dummy_sse_client(*args, **kwargs):
     """Dummy SSE client that returns meaningless read/write functions"""
