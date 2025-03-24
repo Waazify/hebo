@@ -21,6 +21,7 @@ from schemas.agent_settings import AgentSetting, MCPParams
 from services.exceptions import ColleagueHandoffException
 
 from .chat_models.bedrock import get_bedrock_client
+from .dummy import dummy_sse_client, DummyClientSession, dummy_load_mcp_tools
 from .langfuse_utils import get_langfuse_config
 from .llms import init_llm
 from .prompts.condense import get_condense_prompt
@@ -57,9 +58,7 @@ async def execute_conversation(
     mcp_server_params = (
         mcp_server_params
         if isinstance(mcp_server_params, MCPParams)
-        else agent_settings.mcp_params
-        if agent_settings
-        else None
+        else agent_settings.mcp_params if agent_settings else None
     )
 
     logger.debug(f"Executing conversation. Recursion depth: {recursion_depth}")
@@ -123,13 +122,20 @@ async def execute_conversation(
         raise ValueError("LLM not found")
 
     if not mcp_server_params:
-        raise ValueError("MCP server params not found")
+        active_sse_client = dummy_sse_client
+        active_session_class = DummyClientSession
+        active_tools_loader = dummy_load_mcp_tools
+    else:
+        active_sse_client = sse_client
+        active_session_class = ClientSession
+        active_tools_loader = load_mcp_tools
 
-    # TODO: What do do if mcp_server_params is None?
-    async with sse_client(url=mcp_server_params.sse_url) as (read, write):
-        async with ClientSession(read, write) as client_session:
+    async with active_sse_client(
+        url=mcp_server_params.sse_url if mcp_server_params else ""
+    ) as (read, write):
+        async with active_session_class(read, write) as client_session:  # type: ignore
             await client_session.initialize()
-            tools = await load_mcp_tools(client_session)
+            tools = await active_tools_loader(client_session)  # type: ignore
 
             # TODO: make colleague_handoff optional. Maybe another flag on the agent settings?
             tools.append(colleague_handoff)
