@@ -29,6 +29,7 @@ from .prompts.summary import get_summary_prompt
 from .prompts.system import get_system_prompt
 from .prompts.vision import get_vision_prompt
 from .tools import colleague_handoff
+from .utils import clean_ai_message
 
 MAX_RECURSION_DEPTH = settings.MAX_RECURSION_DEPTH
 
@@ -125,17 +126,17 @@ async def execute_conversation(
 
     if not mcp_server_params:
         active_sse_client = dummy_sse_client
-        active_session_class = DummyClientSession
+        active_session = DummyClientSession
         active_tools_loader = dummy_load_mcp_tools
     else:
         active_sse_client = sse_client
-        active_session_class = ClientSession
+        active_session = ClientSession
         active_tools_loader = load_mcp_tools
 
     async with active_sse_client(
         url=mcp_server_params.sse_url if mcp_server_params else ""
     ) as (read, write):
-        async with active_session_class(read, write) as client_session:  # type: ignore
+        async with active_session(read, write) as client_session:  # type: ignore
             await client_session.initialize()
             tools = await active_tools_loader(client_session)  # type: ignore
 
@@ -147,6 +148,17 @@ async def execute_conversation(
 
             try:
                 logger.info("Invoking Conversation LLM...")
+                conversation = [
+                    (
+                        # This has been introduce as a hotfix for the bedrock -> mcp tools integration.
+                        # It's a workaround to remove the run_manager from the tool_calls.
+                        # TODO: Remove this once the tools integration is fixed (on Langchain side).
+                        clean_ai_message(message)
+                        if isinstance(message, AIMessage)
+                        else message
+                    )
+                    for message in conversation
+                ]
                 response = await llm.ainvoke(
                     conversation,
                     config=langfuse_config,
@@ -181,8 +193,14 @@ async def execute_conversation(
                 for tool_call in response.tool_calls:
                     logger.info(f"Invoking tool: {tool_call}")
                     try:
-                        response_text = await eval(tool_call["name"]).ainvoke(
-                            tool_call["args"]
+                        tool = next(t for t in tools if t.name == tool_call["name"])
+                        response_text = await tool.ainvoke(tool_call["args"])
+                    except StopIteration:
+                        logger.error(
+                            f"Tool {tool_call['name']} not found in tools list"
+                        )
+                        response_text = (
+                            f"Tool ({tool_call['name']}): Error - tool not found"
                         )
                     except ColleagueHandoffException as e:
                         raise e
