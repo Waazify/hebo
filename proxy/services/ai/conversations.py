@@ -157,98 +157,98 @@ async def execute_conversation(
                 if isinstance(llm, BaseChatModel):
                     llm = llm.bind_tools(tools)
 
-            try:
-                logger.info("Invoking Conversation LLM...")
-                conversation = [
-                    (
-                        # This has been introduce as a hotfix for the bedrock -> mcp tools integration.
-                        # It's a workaround to remove the run_manager from the tool_calls.
-                        # TODO: Remove this once the tools integration is fixed (on Langchain side).
-                        clean_ai_message(message)
-                        if isinstance(message, AIMessage)
-                        else message
-                    )
-                    for message in conversation
-                ]
-                response = await llm.ainvoke(
-                    conversation,
-                    config=langfuse_config,
-                )
-            except Exception as e:
-                logger.error(f"Error invoking LLM: {e}")
-                raise
-            # we retry because LLMs sometimes return empty response content
-            if not response.content:
-                logger.warning("LLM response content is empty. Retrying...")
-                async for msg in execute_conversation(
-                    llm,
-                    conversation,
-                    session,
-                    behaviour,
-                    context,
-                    history_summaries,
-                    mcp_server_params,
-                    recursion_depth + 1,
-                ):
-                    yield msg
-                return
-
-            if isinstance(response.content, str):
-                response.content = [{"type": "text", "text": response.content}]
-            logger.debug(f"Conversation LLM response: {response}")
-            conversation.append(response)
-            yield response
-
-            if isinstance(response, AIMessage) and response.tool_calls:
-                logger.debug(f"Processing {len(response.tool_calls)} tool calls")
-                for tool_call in response.tool_calls:
-                    logger.info(f"Invoking tool: {tool_call}")
-                    try:
-                        tool = next(t for t in tools if t.name == tool_call["name"])
-                        response_text = await tool.ainvoke(tool_call["args"])
-                    except StopIteration:
-                        logger.error(
-                            f"Tool {tool_call['name']} not found in tools list"
+                try:
+                    conversation = [
+                        (
+                            # This has been introduce as a hotfix for the bedrock -> mcp tools integration.
+                            # It's a workaround to remove the run_manager from the tool_calls.
+                            # TODO: Remove this once the tools integration is fixed (on Langchain side).
+                            clean_ai_message(message)
+                            if isinstance(message, AIMessage)
+                            else message
                         )
-                        response_text = (
-                            f"Tool ({tool_call['name']}): Error - tool not found"
-                        )
-                    except ColleagueHandoffException as e:
-                        raise e
-                    except Exception as e:
-                        logger.warning(f"Error invoking tool {tool_call['name']}: {e}")
-                        response_text = (
-                            f"Tool ({tool_call['name']}): Error invoking tool: {e}"
-                        )
-
-                    tool_message_content = [
-                        {
-                            "type": "text",
-                            "text": response_text,
-                        }
+                        for message in conversation
                     ]
-
-                    tool_message = ToolMessage(
-                        content=tool_message_content,  # type: ignore
-                        tool_call_id=tool_call["id"],
-                        additional_kwargs={"tool_call_name": tool_call["name"]},
+                    response = await llm.ainvoke(
+                        conversation,
+                        config=langfuse_config,
                     )
-                    conversation.append(tool_message)
-                    yield tool_message
+                except Exception as e:
+                    logger.error(f"Error invoking LLM: {e}")
+                    raise
+                # we retry because LLMs sometimes return empty response content
+                if not response.content:
+                    logger.warning("LLM response content is empty. Retrying...")
+                    async for msg in execute_conversation(
+                        llm,
+                        conversation,
+                        session,
+                        behaviour,
+                        context,
+                        history_summaries,
+                        mcp_server_params,
+                        recursion_depth + 1,
+                    ):
+                        yield msg
+                    return
 
-                # Recursive call
-                logger.debug(f"Making recursive call. Current depth: {recursion_depth}")
-                async for msg in execute_conversation(
-                    llm,
-                    conversation,
-                    session,
-                    behaviour,
-                    context,
-                    history_summaries,
-                    mcp_server_params,
-                    recursion_depth + 1,
-                ):
-                    yield msg
+                if isinstance(response.content, str):
+                    response.content = [{"type": "text", "text": response.content}]
+                conversation.append(response)
+                yield response
+
+                if isinstance(response, AIMessage) and response.tool_calls:
+                    for tool_call in response.tool_calls:
+                        try:
+                            tool = next(t for t in tools if t.name == tool_call["name"])
+                            response_text = await tool.ainvoke(tool_call["args"])
+                        except StopIteration:
+                            logger.error(
+                                f"Tool {tool_call['name']} not found in tools list"
+                            )
+                            response_text = (
+                                f"Tool ({tool_call['name']}): Error - tool not found"
+                            )
+                        except ColleagueHandoffException as e:
+                            raise e
+                        except Exception as e:
+                            logger.warning(
+                                f"Error invoking tool {tool_call['name']}: {e}"
+                            )
+                            response_text = (
+                                f"Tool ({tool_call['name']}): Error invoking tool: {e}"
+                            )
+
+                        tool_message_content = [
+                            {
+                                "type": "text",
+                                "text": response_text,
+                            }
+                        ]
+
+                        tool_message = ToolMessage(
+                            content=tool_message_content,  # type: ignore
+                            tool_call_id=tool_call["id"],
+                            additional_kwargs={"tool_call_name": tool_call["name"]},
+                        )
+                        conversation.append(tool_message)
+                        yield tool_message
+
+                    # Recursive call
+                    logger.debug(
+                        f"Making recursive call. Current depth: {recursion_depth}"
+                    )
+                    async for msg in execute_conversation(
+                        llm,
+                        conversation,
+                        session,
+                        behaviour,
+                        context,
+                        history_summaries,
+                        mcp_server_params,
+                        recursion_depth + 1,
+                    ):
+                        yield msg
 
     except* Exception as e:
         raise _extract_root_exception(e) from None
