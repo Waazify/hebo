@@ -36,6 +36,14 @@ MAX_RECURSION_DEPTH = settings.MAX_RECURSION_DEPTH
 logger = logging.getLogger(__name__)
 
 
+def _extract_root_exception(exc: BaseExceptionGroup[Exception] | Exception) -> Exception:
+    """Extract the root cause from potentially nested ExceptionGroups."""
+    if isinstance(exc, BaseExceptionGroup):
+        root_exc = exc.exceptions[0]
+        return _extract_root_exception(root_exc)
+    return exc
+
+
 async def execute_conversation(
     agent_settings_or_llm: (
         AgentSetting | BaseChatModel | Runnable[LanguageModelInput, BaseMessage]
@@ -133,18 +141,19 @@ async def execute_conversation(
         active_session = ClientSession
         active_tools_loader = load_mcp_tools
 
-    async with active_sse_client(
-        url=mcp_server_params.sse_url if mcp_server_params else ""
-    ) as (read, write):
-        async with active_session(read, write) as client_session:  # type: ignore
-            await client_session.initialize()
-            tools = await active_tools_loader(client_session)  # type: ignore
+    try:
+        async with active_sse_client(
+            url=mcp_server_params.sse_url if mcp_server_params else ""
+        ) as (read, write):
+            async with active_session(read, write) as client_session:  # type: ignore
+                await client_session.initialize()
+                tools = await active_tools_loader(client_session)  # type: ignore
 
-            # TODO: make colleague_handoff optional. Maybe another flag on the agent settings?
-            tools.append(colleague_handoff)
+                # TODO: make colleague_handoff optional. Maybe another flag on the agent settings?
+                tools.append(colleague_handoff)
 
-            if isinstance(llm, BaseChatModel):
-                llm = llm.bind_tools(tools)
+                if isinstance(llm, BaseChatModel):
+                    llm = llm.bind_tools(tools)
 
             try:
                 logger.info("Invoking Conversation LLM...")
@@ -238,6 +247,9 @@ async def execute_conversation(
                     recursion_depth + 1,
                 ):
                     yield msg
+
+    except* Exception as e:
+        raise _extract_root_exception(e) from None
 
 
 # TODO: make this async
