@@ -212,7 +212,9 @@ async def execute_conversation(
                         except ColleagueHandoffException as e:
                             raise e
                         except Exception as e:
-                            logger.warning(f"Error invoking tool {tool_call['name']}: {e}")
+                            logger.warning(
+                                f"Error invoking tool {tool_call['name']}: {e}"
+                            )
                             response_text = (
                                 f"Tool ({tool_call['name']}): Error invoking tool: {e}"
                             )
@@ -233,7 +235,9 @@ async def execute_conversation(
                         yield tool_message
 
                     # Recursive call
-                    logger.debug(f"Making recursive call. Current depth: {recursion_depth}")
+                    logger.debug(
+                        f"Making recursive call. Current depth: {recursion_depth}"
+                    )
                     async for msg in execute_conversation(
                         llm,
                         conversation,
