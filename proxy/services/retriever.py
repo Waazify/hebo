@@ -164,7 +164,7 @@ class Retriever:
             return (
                 "\n\n".join([vector.source for vector in knowledge_vectors])
                 + "\n\n<examples>"
-                + "".join([f"\n\n{vector.source}" for vector in example_vectors])
+                + "\n\n".join([f"\n\n{vector.source}" for vector in example_vectors])
                 + "\n\n</examples>"
             )
 

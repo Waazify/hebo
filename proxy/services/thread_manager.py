@@ -423,7 +423,7 @@ class ThreadManager:
                     agent_settings.hide_tool_messages,
                 )
 
-                message_parts = self._split_message(reply.content)
+                message_parts = self._split_message(reply)
                 for i, part in enumerate(message_parts):
                     if part.text:
                         if (
@@ -448,7 +448,13 @@ class ThreadManager:
                             # Add a delay of -15 seconds for the first part to account for the system latency
                             delay -= 15 if i == 0 else 0
                             await asyncio.sleep(
-                                max(0, delay) if agent_settings.delay else 0
+                                max(0, delay)
+                                if (
+                                    agent_settings.delay
+                                    and message_type != MessageType.TOOL_ANSWER
+                                    and should_send
+                                )
+                                else 0.75
                             )
                             base_message = BaseMessage(
                                 message_type=message_type,
@@ -624,28 +630,36 @@ class ThreadManager:
         if len(replies) > 1 and replies[-2].message_type == MessageType.TOOL_ANSWER:
             if "error" not in [
                 c.text.lower() for c in replies[-2].content if c.text is not None
-            ] and any(
-                tool_call.name
-                in [c.text.lower() for c in replies[-2].content if c.text is not None]
+            ] or any(
+                tool_call.name != replies[-2].tool_call_name
                 for tool_call in replies[-1].content
             ):
                 return True
 
+        # We send AI messages as long as they do not introduce a tool use (at this point hide_tool_messages is True)
+        elif not any(
+            c.type == MessageContentType.TOOL_USE for c in replies[-1].content
+        ):
+            return True
+
         return False
 
     @staticmethod
-    def _split_message(content: List[MessageContent]) -> List[MessageContent]:
-        response_text = ""
+    def _split_message(message: Message) -> List[MessageContent]:
+        if message.message_type == MessageType.TOOL_ANSWER:
+            return message.content
 
         response_text = str(
-            "\n\n".join([item.text for item in content if item.text is not None])
+            "\n\n".join(
+                [item.text for item in message.content if item.text is not None]
+            )
         )
 
         # Split the response text into parts and format each part as a MessageContent
         return [
             MessageContent(type=MessageContentType.TEXT, text=part)
             for part in response_text.split("\n\n")
-        ] + [c for c in content if c.type == MessageContentType.TOOL_USE]
+        ] + [c for c in message.content if c.type == MessageContentType.TOOL_USE]
 
     def _sanitize_messages(self, messages: List[Message]) -> List[Message]:
         """This assumes messages have been sorted and merged"""
@@ -653,6 +667,7 @@ class ThreadManager:
             return self._sanitize_messages(messages[:-1])
 
         if len(messages) > 1:
+            # We must chain an AI response after a tool answer. If a user sends a message in the middle, we merge it into the tool answer.
             if messages[-2].message_type == MessageType.TOOL_ANSWER:
                 tool_name = f" {messages[-2].tool_call_name}"
                 messages[-2].content.append(
@@ -671,6 +686,7 @@ class ThreadManager:
                 )
                 return messages[:-1]
 
+            # Here instead, we are making sure that there is a tool answer after a tool use from the AI, since API expects a tool answer after a tool use.
             if messages[-2].message_type == MessageType.AI and any(
                 c.type == MessageContentType.TOOL_USE for c in messages[-2].content
             ):
@@ -718,9 +734,9 @@ class ThreadManager:
                 elif message.message_type == "human_agent":
                     curr_content = message.content
                     if curr_content[0].type == "text":
-                        message.content[
-                            0
-                        ].text = f"Human colleague: {curr_content[0].text}"
+                        message.content[0].text = (
+                            f"Human colleague: {curr_content[0].text}"
+                        )
                     else:
                         message.content.insert(
                             0,
@@ -734,9 +750,9 @@ class ThreadManager:
                         added_first_human_message = True
                         curr_content = message.content
                         if curr_content[0].type == "text":
-                            message.content[
-                                0
-                            ].text = f"(first message) {curr_content[0].text}"
+                            message.content[0].text = (
+                                f"(first message) {curr_content[0].text}"
+                            )
                         else:
                             message.content.insert(
                                 0,
@@ -749,12 +765,10 @@ class ThreadManager:
                 previous_message = message
                 previous_message_type = message.message_type
             else:
-                # Add the previous human message (if any) to formatted_messages
                 if previous_message:
                     formatted_messages.append(previous_message)
-                    previous_message = None
-                # Add the non-human message to formatted_messages
-                formatted_messages.append(message)
+                previous_message = message
+                previous_message_type = message.message_type
 
         # Add the last human message if it exists
         if previous_message:
