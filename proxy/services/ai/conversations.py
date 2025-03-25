@@ -36,7 +36,9 @@ MAX_RECURSION_DEPTH = settings.MAX_RECURSION_DEPTH
 logger = logging.getLogger(__name__)
 
 
-def _extract_root_exception(exc: BaseExceptionGroup[Exception] | Exception) -> Exception:
+def _extract_root_exception(
+    exc: BaseExceptionGroup[Exception] | Exception,
+) -> Exception:
     """Extract the root cause from potentially nested ExceptionGroups."""
     if isinstance(exc, BaseExceptionGroup):
         root_exc = exc.exceptions[0]
