@@ -628,13 +628,15 @@ class ThreadManager:
 
         # We send message between two tool calls, unless the tool call is an error
         if len(replies) > 1 and replies[-2].message_type == MessageType.TOOL_ANSWER:
-            if "error" not in [
+            if "error" in [
                 c.text.lower() for c in replies[-2].content if c.text is not None
-            ] or any(
-                tool_call.name != replies[-2].tool_call_name
+            ] and any(
+                tool_call.name == replies[-2].tool_call_name
                 for tool_call in replies[-1].content
             ):
-                return True
+                return False
+
+            return True
 
         # We send AI messages as long as they do not introduce a tool use (at this point hide_tool_messages is True)
         elif not any(
