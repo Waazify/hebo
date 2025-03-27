@@ -50,4 +50,6 @@ COPY --from=builder --chown=app:app /usr/local /usr/local
 ENV PYTHONPATH="/app:$PYTHONPATH"
 ENV DJANGO_SETTINGS_MODULE="settings"
 
+WORKDIR /app
+
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "core.wsgi:application"]
