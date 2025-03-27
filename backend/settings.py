@@ -300,3 +300,6 @@ LOGGING = {
         "level": "ERROR",
     },
 }
+
+# Add to your settings
+VECTOR_GENERATION_MAX_WORKERS = int(os.getenv("VECTOR_GENERATION_MAX_WORKERS", "10"))

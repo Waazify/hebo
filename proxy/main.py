@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 async def graceful_shutdown(app: FastAPI):
     logger.info("Initiating graceful shutdown...")
-    logger.info("Ensuring all pending conversations are completed...")
+    logger.info("Ensuring all pending runs are completed...")
     await app.state.task_tracker.wait_for_tasks(timeout=120)
     logger.info("Closing database connections...")
     await app.state.db_pool.close()

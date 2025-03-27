@@ -1,3 +1,4 @@
+import functools
 import logging
 import re
 import requests
@@ -5,6 +6,7 @@ import markdown
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
+from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, IntegrityError, transaction
@@ -18,10 +20,10 @@ from agent_settings.models import AgentSetting
 from core.managers import OrganizationManagerMixin
 from hebo_organizations.models import Organization
 
-logger = logging.getLogger(__name__)
-
 if TYPE_CHECKING:
     from django.db.models.manager import RelatedManager
+
+logger = logging.getLogger(__name__)
 
 
 class ContentHashMixin:
@@ -521,12 +523,24 @@ class Part(models.Model):
 
     def generate_vectors_async(self):
         """Asynchronous version that doesn't block the main thread"""
-        # For now, we'll use threading as a simple solution
-        import threading
+        try:
+            executor = apps.get_app_config("knowledge").vector_executor  # type: ignore
+            if executor is None:
+                logger.error("Vector executor not initialized")
+                return
+            future = executor.submit(self.generate_vectors)
+            future.add_done_callback(
+                functools.partial(self._handle_vector_generation_complete)
+            )
+        except Exception as e:
+            logger.error(f"Failed to submit vector generation task: {str(e)}")
 
-        thread = threading.Thread(target=self.generate_vectors)
-        thread.daemon = True
-        thread.start()
+    def _handle_vector_generation_complete(self, future):
+        """Handle completion of vector generation"""
+        try:
+            future.result()  # This will raise any exceptions that occurred
+        except Exception as e:
+            logger.error(f"Vector generation failed for part {self.pk}: {str(e)}")
 
     def generate_vectors(self):
         """
@@ -537,147 +551,154 @@ class Part(models.Model):
         4. Getting embedding model from agent settings
         5. Calling the proxy service with retries and error handling
         """
-        try:
-            # Step 1: Format the content based on the content type
-            # Get the raw content from the page
-            if self.start_line is None or self.end_line is None:
-                logger.warning(f"Part {self.pk} has invalid line numbers")
-                return
-
-            # Extract content from the page content using line numbers
-            content_lines = self.page.content.splitlines()[
-                self.start_line : self.end_line + 1
-            ]
-            raw_content = "\n".join(content_lines)
-
-            # Remove backtick code blocks (```example``` or ```scenario```)
-            formatted_content = re.sub(
-                r"```\s*(?:example|scenario)\s*\n|\n\s*```", "", raw_content
-            )
-
-            # Wrap examples in <example> tags if needed
-            if self.content_type == ContentType.EXAMPLE:
-                # TODO: the <example> tags should depend on the core llm used.
-                formatted_content = f"<example>\n{formatted_content}\n</example>"
-
-            # Step 2: Get API key for the organization
+        with requests.Session() as session:
             try:
-                api_key = (
-                    APIKey.objects.filter(
-                        organization=self.page.organization, is_active=True
-                    )
-                    .order_by("-created_at")
-                    .first()
-                )
-
-                if not api_key:
-                    logger.error(
-                        f"No active API key found for organization {self.page.organization.id}"
-                    )
+                # Step 1: Format the content based on the content type
+                # Get the raw content from the page
+                if self.start_line is None or self.end_line is None:
+                    logger.warning(f"Part {self.pk} has invalid line numbers")
                     return
 
-            except Exception as e:
-                logger.error(f"Error fetching API key: {str(e)}")
-                return
+                # Extract content from the page content using line numbers
+                content_lines = self.page.content.splitlines()[
+                    self.start_line : self.end_line + 1
+                ]
+                raw_content = "\n".join(content_lines)
 
-            # Step 3: Get agent version - use one of the version slugs
-            try:
-                # Try to get a version-specific slug first
-                version_slug = self.page.version.slugs.first()
-                if version_slug:
-                    agent_version = version_slug.slug
-                else:
-                    # Fallback to version name if no slugs are available
-                    agent_version = (
-                        f"{self.page.version.agent.slug}:{self.page.version.name}"
-                    )
-                    logger.warning(
-                        f"No version slugs found for version {self.page.version.pk}, using fallback: {agent_version}"
-                    )
-            except Exception as e:
-                # Worst case fallback
-                agent_version = str(self.page.version.pk)
-                logger.error(
-                    f"Error getting version slug: {str(e)}, using version ID as fallback"
+                # Remove backtick code blocks (```example``` or ```scenario```)
+                formatted_content = re.sub(
+                    r"```\s*(?:example|scenario)\s*\n|\n\s*```", "", raw_content
                 )
 
-            # Step 4: Get embedding model from agent settings
-            embedding_model = "ada002"  # Default fallback
-            try:
-                agent_setting = AgentSetting.objects.get(version=self.page.version)
-                if agent_setting.embeddings and agent_setting.embeddings.name:
-                    # Use the embedding model from settings
-                    embedding_model = agent_setting.embeddings.name
-                    # Some models might be stored with full names, but we need short names for the API
-                    # Map common model names to their short format if needed
-                    model_map = {
-                        "text-embedding-ada-002": "ada002",
-                        "all-MiniLM-L6-v2": "minilm",
-                        "all-mpnet-base-v2": "mpnet",
-                        "bge-large-en": "bger",
-                        "voyage-multimodal-3": "voyage",
-                    }
-                    embedding_model = model_map.get(embedding_model, embedding_model)
-                else:
-                    logger.warning(
-                        f"No embedding model configured for version {self.page.version.pk}, using default: {embedding_model}"
-                    )
-            except AgentSetting.DoesNotExist:
-                logger.warning(
-                    f"No agent settings found for version {self.page.version.pk}, using default embedding model: {embedding_model}"
-                )
-            except Exception as e:
-                logger.error(
-                    f"Error retrieving embedding model: {str(e)}, using default: {embedding_model}"
-                )
+                # Wrap examples in <example> tags if needed
+                if self.content_type == ContentType.EXAMPLE:
+                    # TODO: the <example> tags should depend on the core llm used.
+                    formatted_content = f"<example>\n{formatted_content}\n</example>"
 
-            # Get content_type as string for metadata
-            if isinstance(self.content_type, str):
-                content_type_str = self.content_type
-            else:
-                # Assuming it's an enum instance
+                # Step 2: Get API key for the organization
                 try:
-                    content_type_str = self.content_type.value
-                except AttributeError:
-                    # Fallback if it's neither string nor has value attribute
-                    content_type_str = str(self.content_type)
+                    api_key = (
+                        APIKey.objects.filter(
+                            organization=self.page.organization, is_active=True
+                        )
+                        .order_by("-created_at")
+                        .first()
+                    )
 
-            # Step 5: Prepare payload for the proxy service
-            payload = {
-                "agent_version": agent_version,
-                "part_id": self.pk,
-                "embedding_model": embedding_model,
-                "content": formatted_content,
-                "metadata": {
-                    "content_type": content_type_str,
-                    "version_id": self.page.version.pk,
-                },
-            }
+                    if not api_key:
+                        logger.error(
+                            f"No active API key found for organization {self.page.organization.id}"
+                        )
+                        return
 
-            # Step 6: Call the proxy endpoint
-            proxy_url = f"{settings.PROXY_URL}/vector"
+                except Exception as e:
+                    logger.error(f"Error fetching API key: {str(e)}")
+                    return
 
-            def make_request():
-                return requests.post(
+                # Step 3: Get agent version - use one of the version slugs
+                try:
+                    # Try to get a version-specific slug first
+                    version_slug = self.page.version.slugs.first()
+                    if version_slug:
+                        agent_version = version_slug.slug
+                    else:
+                        # Fallback to version name if no slugs are available
+                        agent_version = (
+                            f"{self.page.version.agent.slug}:{self.page.version.name}"
+                        )
+                        logger.warning(
+                            f"No version slugs found for version {self.page.version.pk}, using fallback: {agent_version}"
+                        )
+                except Exception as e:
+                    # Worst case fallback
+                    agent_version = str(self.page.version.pk)
+                    logger.error(
+                        f"Error getting version slug: {str(e)}, using version ID as fallback"
+                    )
+
+                # Step 4: Get embedding model from agent settings
+                embedding_model = "ada002"  # Default fallback
+                try:
+                    agent_setting = AgentSetting.objects.get(version=self.page.version)
+                    if agent_setting.embeddings and agent_setting.embeddings.name:
+                        # Use the embedding model from settings
+                        embedding_model = agent_setting.embeddings.name
+                        # Some models might be stored with full names, but we need short names for the API
+                        # Map common model names to their short format if needed
+                        model_map = {
+                            "text-embedding-ada-002": "ada002",
+                            "all-MiniLM-L6-v2": "minilm",
+                            "all-mpnet-base-v2": "mpnet",
+                            "bge-large-en": "bger",
+                            "voyage-multimodal-3": "voyage",
+                        }
+                        embedding_model = model_map.get(
+                            embedding_model, embedding_model
+                        )
+                    else:
+                        logger.warning(
+                            f"No embedding model configured for version {self.page.version.pk}, using default: {embedding_model}"
+                        )
+                except AgentSetting.DoesNotExist:
+                    logger.warning(
+                        f"No agent settings found for version {self.page.version.pk}, using default embedding model: {embedding_model}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Error retrieving embedding model: {str(e)}, using default: {embedding_model}"
+                    )
+
+                # Get content_type as string for metadata
+                if isinstance(self.content_type, str):
+                    content_type_str = self.content_type
+                else:
+                    # Assuming it's an enum instance
+                    try:
+                        content_type_str = self.content_type.value
+                    except AttributeError:
+                        # Fallback if it's neither string nor has value attribute
+                        content_type_str = str(self.content_type)
+
+                # Step 5: Prepare payload for the proxy service
+                payload = {
+                    "agent_version": agent_version,
+                    "part_id": self.pk,
+                    "embedding_model": embedding_model,
+                    "content": formatted_content,
+                    "metadata": {
+                        "content_type": content_type_str,
+                        "version_id": self.page.version.pk,
+                    },
+                }
+
+                # Step 6: Call the proxy endpoint
+                proxy_url = f"{settings.PROXY_URL}/vector"
+
+                # Use session for the request
+                response = session.post(
                     proxy_url,
                     json=payload,
                     headers={
                         "X-API-Key": api_key.key,
                         "Content-Type": "application/json",
                     },
-                    timeout=30,  # Add a 30-second timeout to prevent hanging requests
+                    timeout=30,
                 )
-
-            # Make the request with retry logic
-            try:
-                response = make_request()
 
                 # Retry once if request fails
                 if response.status_code >= 400:
                     logger.warning(
                         f"First attempt to create vector failed with status {response.status_code}: {response.text}"
                     )
-                    response = make_request()
+                    response = session.post(
+                        proxy_url,
+                        json=payload,
+                        headers={
+                            "X-API-Key": api_key.key,
+                            "Content-Type": "application/json",
+                        },
+                        timeout=30,
+                    )
 
                 # Check final response
                 if response.status_code >= 400:
@@ -695,10 +716,6 @@ class Part(models.Model):
             except Exception as e:
                 logger.error(f"Error calling vector service: {str(e)}")
                 return
-
-        except Exception as e:
-            logger.error(f"Error in generate_vectors for part {self.pk}: {str(e)}")
-            return
 
         return True
 
