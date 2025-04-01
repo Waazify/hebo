@@ -35,7 +35,7 @@
                             <a href="{% if user_organization %}{% url 'agent_list' organization_pk=user_organization.pk %}{% else %}{% url 'account_login' %}{% endif %}" 
                                class="text-primary hover:text-primary-focus inline-flex items-center gap-1">
                                 {% if selected_agent and selected_version %}
-                                    {{ selected_agent.name }}@{{ selected_version.name }}
+                                    {{ selected_agent.name }}:{{ selected_version.name }}
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6 6" 
                                          class="w-2 h-2 {% if selected_version.status == 'current' %}fill-success{% else %}fill-base-content/50{% endif %}">
                                         <circle cx="3" cy="3" r="3" />
@@ -66,7 +66,7 @@
                         <a href="{% if user_organization %}{% url 'agent_list' organization_pk=user_organization.pk %}{% else %}{% url 'account_login' %}{% endif %}" 
                            class="text-primary hover:text-primary-focus inline-flex items-center gap-1">
                             {% if selected_agent and selected_version %}
-                                {{ selected_agent.name }}@{{ selected_version.name }}
+                                {{ selected_agent.name }}:{{ selected_version.name }}
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6 6" 
                                      class="w-2 h-2 {% if selected_version.status == 'current' %}fill-success{% else %}fill-base-content/50{% endif %}">
                                     <circle cx="3" cy="3" r="3" />

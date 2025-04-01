@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 
@@ -40,6 +41,8 @@ Past conversations:
 
 Continue the conversation with the user using the same language and tone as the past conversations.
 """
+
+    prompt += f"\nToday is {datetime.now().strftime('%B %d, %Y')}"
 
     return prompt.format(
         context=context,

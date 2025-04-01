@@ -369,6 +369,7 @@ class DB:
             WHERE pg.version_id = $1
               AND pg.organization_id = $2
               AND p.content_type = 'behaviour'
+              AND NOT (p.start_line = 0 AND p.end_line = 0)
             ORDER BY ph.path, p.start_line, p.end_line
         """
         rows = await self.conn.fetch(query, version_id, organization_id)

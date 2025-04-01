@@ -1,6 +1,7 @@
 import json
 import logging
 import markdown
+import time
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
@@ -359,13 +360,12 @@ class PageViewSet(viewsets.ModelViewSet):
         validated_data = serializer.validated_data
 
         # Create a set of content hashes from the request for quick lookup
-        request_content = {
-            page["content"]
-            for page in validated_data  # type: ignore
-        }
+        request_content = {page["content"] for page in validated_data}  # type: ignore
 
         # Initialize operation report
         report = {"created": [], "updated": [], "deleted": [], "errors": []}
+
+        BATCH_SIZE = 10
 
         try:
             with transaction.atomic():
@@ -373,37 +373,42 @@ class PageViewSet(viewsets.ModelViewSet):
                 for page in queryset:
                     if page.content not in request_content:
                         page.delete()
-                        report["deleted"].append(
-                            {"id": page.id, "title": page.title}  # type: ignore
-                        )
+                        report["deleted"].append({"id": page.id, "title": page.title})  # type: ignore
 
-                # Update or create pages
-                for page_data in validated_data:  # type: ignore
-                    # Try to find existing page with matching content
-                    existing_page = queryset.filter(
-                        content=page_data["content"]
-                    ).first()
+                # Update or create pages in batches
+                for i in range(0, len(validated_data), BATCH_SIZE):  # type: ignore
+                    batch = validated_data[i : i + BATCH_SIZE]  # type: ignore
 
-                    if existing_page:
-                        # Update existing page
-                        existing_page.title = page_data["title"]
-                        existing_page.position = page_data["position"]
-                        existing_page.save()
-                        report["updated"].append(
-                            {"id": existing_page.id, "title": existing_page.title}  # type: ignore
-                        )
-                    else:
-                        # Create new page
-                        new_page = Page.objects.create(
-                            organization=request.auth,  # type: ignore
-                            version=version,
-                            title=page_data["title"],
-                            content=page_data["content"],
-                            position=page_data["position"],
-                        )
-                        report["created"].append(
-                            {"id": new_page.id, "title": new_page.title}  # type: ignore
-                        )
+                    for page_data in batch:
+                        # Try to find existing page with matching content
+                        existing_page = queryset.filter(
+                            content=page_data["content"]
+                        ).first()
+
+                        if existing_page:
+                            # Update existing page
+                            existing_page.title = page_data["title"]
+                            existing_page.position = page_data["position"]
+                            existing_page.save()
+                            report["updated"].append(
+                                {"id": existing_page.id, "title": existing_page.title}  # type: ignore
+                            )
+                        else:
+                            # Create new page
+                            new_page = Page.objects.create(
+                                organization=request.auth,  # type: ignore
+                                version=version,
+                                title=page_data["title"],
+                                content=page_data["content"],
+                                position=page_data["position"],
+                            )
+                            report["created"].append(
+                                {"id": new_page.id, "title": new_page.title}  # type: ignore
+                            )
+
+                    # Wait a short time between batches to prevent connection spikes
+                    if i + BATCH_SIZE < len(validated_data):  # type: ignore
+                        time.sleep(1)
 
         except IntegrityError as e:
             if "unique_page_position_per_version_and_parent" in str(e):
