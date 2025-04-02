@@ -72,6 +72,10 @@ def get_llm(
     
     if not model_name:
         raise ValueError("Model name not found")
+
+    # Validate the model name
+    if not validate_model_name(model_name):
+        raise ValueError(f"Invalid model name: {model_name}")
         
     if llm_settings:
         if llm_settings.provider == "openai":
