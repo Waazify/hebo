@@ -199,11 +199,12 @@ class ThreadManager:
         # Merge messages
         conversation_messages = self._merge_sanitize_messages(messages)
         for message in conversation_messages:
-            if message.message_type.value in ["ai", "human", "tool"]:
+            if message.message_type.value in ["ai", "human", "tool", "human_agent"]:
                 message_class = {
                     "ai": AIMessage,
                     "human": HumanMessage,
                     "tool": ToolMessage,
+                    "human_agent": AIMessage,
                 }[message.message_type.value]
             llm_conversation.append(message_class(**message.to_langchain_format()))
         return llm_conversation
