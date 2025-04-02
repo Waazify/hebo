@@ -24,7 +24,7 @@ from services.exceptions import ColleagueHandoffException
 from .chat_models.bedrock import get_bedrock_client
 from .dummy import dummy_sse_client, DummyClientSession, dummy_load_mcp_tools
 from .langfuse_utils import get_langfuse_config
-from .llms import init_llm
+from .llms import init_llm, BEDROCK_ARN_PATTERN, OPENAI_PATTERN
 from .prompts.condense import get_condense_prompt
 from .prompts.summary import get_summary_prompt
 from .prompts.system import get_system_prompt
@@ -419,3 +419,12 @@ def execute_summary(
     logger.debug(f"Summary LLM response: {response}")
     content = response.content
     return content if isinstance(content, str) else ""
+
+
+def validate_model_name(model_name: str) -> bool:
+    """Validate the model name using regex patterns."""
+    if BEDROCK_ARN_PATTERN.match(model_name):
+        return True
+    elif OPENAI_PATTERN.match(model_name):
+        return True
+    return False
