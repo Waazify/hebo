@@ -269,11 +269,13 @@ async def execute_conversation(
     except* Exception as e:
         raise _extract_root_exception(e) from None
 
-
+# TODO: make this async
 def execute_vision(
     client,
     conversation: List[BaseMessage],
     session: Session,
+    # TODO: agent_settings is used just for the model name. Client depends on AgentSettings.
+    # TODO: This should refactored and implemented in a more elegant way.
     agent_settings: AgentSetting,
 ) -> str:
     langfuse_config = get_langfuse_config("vision", session)
@@ -341,10 +343,13 @@ def _format_conversation(
     ]
 
 
+# TODO: make this async
 def execute_condense(
     client,
     conversation: List[BaseMessage],
     session: Session,
+    # TODO: agent_settings is used just for the model name. Client depends on AgentSettings.
+    # TODO: This should refactored and implemented in a more elegant way.
     agent_settings: AgentSetting,
 ) -> str:
     """Execute a conversation with the LLM and yield messages to be returned."""

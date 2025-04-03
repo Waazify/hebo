@@ -28,18 +28,14 @@ def init_llm(client, model_name, temperature=1, max_tokens=512, **kwargs):
     provider = get_provider(model_name)
 
     config = {
+        "client": client,
         "model": model_name,
         "temperature": temperature,
-        "max_tokens": max_tokens,
         **kwargs
     }
 
-    if provider == PROVIDER_MAP["bedrock"]:
-        config["model_kwargs"] = {"max_tokens": max_tokens}
+    # Only add max_tokens for non-Bedrock models
+    if provider != PROVIDER_MAP["bedrock"]:
+        config["max_tokens"] = max_tokens
 
-    return provider(
-        client=client,
-        model=model_name,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
+    return provider(**config)
