@@ -256,11 +256,8 @@ async def execute_conversation(
 
 # TODO: make this async
 def execute_vision(
-    client,
     conversation: List[BaseMessage],
     session: Session,
-    # TODO: agent_settings is used just for the model name. Client depends on AgentSettings.
-    # TODO: This should be refactored and implemented in a more elegant way.
     agent_settings: AgentSetting,
 ) -> str:
     langfuse_config = get_langfuse_config("vision", session)
@@ -271,6 +268,30 @@ def execute_vision(
             client,
             agent_settings.vision_llm.name if agent_settings.vision_llm else None,
         )
+
+    client = get_bedrock_client(
+        (
+            agent_settings.vision_llm.aws_access_key_id
+            if agent_settings
+            and agent_settings.vision_llm
+            and agent_settings.vision_llm.aws_access_key_id
+            else ""
+        ),
+        (
+            agent_settings.vision_llm.aws_secret_access_key
+            if agent_settings
+            and agent_settings.vision_llm
+            and agent_settings.vision_llm.aws_secret_access_key
+            else ""
+        ),
+        (
+            agent_settings.vision_llm.aws_region
+            if agent_settings
+            and agent_settings.vision_llm
+            and agent_settings.vision_llm.aws_region
+            else ""
+        ),
+    )
 
     llm = get_llm(client)
 
@@ -291,7 +312,6 @@ def execute_vision(
 
 
 def _format_conversation(
-    client,
     conversation: List[BaseMessage],
     session: Session,
     agent_settings: AgentSetting,
@@ -322,7 +342,9 @@ def _format_conversation(
                     elif item.get("type") == "image_url" and isinstance(
                         message, HumanMessage
                     ):
-                        content += f"{execute_vision(client, [message], session, agent_settings)}\n"
+                        content += (
+                            f"{execute_vision([message], session, agent_settings)}\n"
+                        )
             return f"{prefix}{content.replace('\n', ' ')}" if content else ""
         else:
             return f"{prefix}{message.content.replace('\n', ' ')}"
@@ -356,7 +378,7 @@ def execute_condense(
         )
 
     llm = get_llm(client)
-    messages = _format_conversation(client, conversation, session, agent_settings)
+    messages = _format_conversation(conversation, session, agent_settings)
     chat_history = "\n".join(messages[:-1])
     follow_up_question = messages[-1].replace("B: ", "")
 
@@ -430,7 +452,7 @@ def execute_summary(
     llm = get_llm(client)
 
     messages = _format_conversation(
-        client, conversation, session, agent_settings, operation="summary"
+        conversation, session, agent_settings, operation="summary"
     )
 
     try:
@@ -442,7 +464,8 @@ def execute_summary(
                     content=(
                         "Generate a detailed summary of the conversation. "
                         "Respond with the summary only. "
-                        "No comments or other text."
+                        "No comments or other text. "
+                        "Remember to use the same language as the conversation. If the conversation is in English, keep it in English."
                     )
                 ),
             ],
