@@ -277,38 +277,8 @@ def execute_vision(
 ) -> str:
     langfuse_config = get_langfuse_config("vision", session)
 
-    def get_llm(client):
-        """Initialize the LLM and return the instance."""
-        return init_llm(
-            client,
-            agent_settings.vision_llm.name if agent_settings.vision_llm else None,
-        )
-
-    client = get_bedrock_client(
-        (
-            agent_settings.vision_llm.aws_access_key_id
-            if agent_settings
-            and agent_settings.vision_llm
-            and agent_settings.vision_llm.aws_access_key_id
-            else ""
-        ),
-        (
-            agent_settings.vision_llm.aws_secret_access_key
-            if agent_settings
-            and agent_settings.vision_llm
-            and agent_settings.vision_llm.aws_secret_access_key
-            else ""
-        ),
-        (
-            agent_settings.vision_llm.aws_region
-            if agent_settings
-            and agent_settings.vision_llm
-            and agent_settings.vision_llm.aws_region
-            else ""
-        ),
-    )
-
-    llm = get_llm(client)
+    # Use the vision LLM settings
+    llm = get_llm(agent_settings, llm_type="vision")
 
     try:
         logger.info("Invoking Vision LLM...")
