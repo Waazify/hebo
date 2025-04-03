@@ -18,6 +18,7 @@ dependencies = [
     "pgvector>=0.3.6",
     "django-extensions>=3.2.3",
     "django-schema-graph>=3.1.0",
-    "dj-stripe>=2.8.4",
     "django-stubs>=5.1.1",
+    "dj-stripe==2.8.4",
+    "stripe==4.2.0",
 ]

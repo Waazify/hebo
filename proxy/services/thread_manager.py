@@ -18,6 +18,7 @@ from config import settings
 from db.database import DB
 from db.vectorstore import VectorStore
 from schemas.ai import Session
+from schemas.agent_settings import AgentSetting
 from schemas.threads import (
     AddMessageRequest,
     BaseMessage,
@@ -32,7 +33,7 @@ from schemas.threads import (
     RunStatus,
     Thread,
 )
-from .ai.conversations import execute_conversation, execute_summary
+from .ai.conversations import execute_conversation, execute_summary, execute_vision
 from .ai.vision import get_content_from_human_message
 from .exceptions import ColleagueHandoffException
 from .retriever import Retriever
@@ -112,7 +113,9 @@ class ThreadManager:
                 created_at=datetime.now(messages[-1].created_at.tzinfo),
             )
         )
-        llm_conversation = self._messages_to_llm_conversation(messages)
+        llm_conversation = self._messages_to_llm_conversation(
+            messages, agent_settings, session
+        )
         summary = execute_summary(agent_settings, llm_conversation, session)
 
         return summary
@@ -191,21 +194,45 @@ class ThreadManager:
         await self.db.remove_message(message_id, thread_id)
         return message_id
 
+    @staticmethod
+    def _replace_image_url_with_text(
+        message: LangchainBaseMessage,
+        agent_setting: AgentSetting,
+        session: Session,
+    ) -> LangchainBaseMessage:
+        if isinstance(message, AIMessage):
+            for content in message.content:
+                if isinstance(content, dict) and content.get("type") == "image_url":
+                    human_message = HumanMessage(content=[content])
+                    content["text"] = (
+                        f"I'm sharing an image with you. Here is the description:\n{execute_vision([human_message], session, agent_setting)}"
+                    )
+                    content["type"] = "text"
+                    content.pop("image_url", None)
+        return message
+
     def _messages_to_llm_conversation(
-        self, messages: List[Message]
+        self, messages: List[Message], agent_setting: AgentSetting, session: Session
     ) -> List[LangchainBaseMessage]:
         llm_conversation: List[LangchainBaseMessage] = []
 
         # Merge messages
         conversation_messages = self._merge_sanitize_messages(messages)
         for message in conversation_messages:
-            if message.message_type.value in ["ai", "human", "tool"]:
+            if message.message_type.value in ["ai", "human", "tool", "human_agent"]:
                 message_class = {
                     "ai": AIMessage,
                     "human": HumanMessage,
                     "tool": ToolMessage,
+                    "human_agent": AIMessage,
                 }[message.message_type.value]
-            llm_conversation.append(message_class(**message.to_langchain_format()))
+            llm_conversation.append(
+                self._replace_image_url_with_text(
+                    message_class(**message.to_langchain_format()),
+                    agent_setting,
+                    session,
+                )
+            )
         return llm_conversation
 
     async def run_thread(
@@ -318,8 +345,6 @@ class ThreadManager:
                 yield f"data: {run_response.model_dump_json(exclude_none=True)}\n\n"
                 logger.info("Run %s is not in CREATED status", run_id)
 
-            llm_conversation = self._messages_to_llm_conversation(messages)
-
             # Create a session to trace the thread execution
             session = Session(
                 contact_identifier=thread.contact_identifier,
@@ -327,6 +352,10 @@ class ThreadManager:
                 trace_id=uuid.uuid4(),
                 agent_version=run_request.agent_version,
                 organization_id=organization_id,
+            )
+
+            llm_conversation = self._messages_to_llm_conversation(
+                messages, agent_settings, session
             )
 
             # Retrieve relevant context
