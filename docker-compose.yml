@@ -18,6 +18,8 @@ services:
       dockerfile: docker/backend.Dockerfile
     volumes:
       - backend_static:/app/staticfiles
+      - ./backend:/app
+    working_dir: /app
     env_file:
       - backend/.env
     environment:
@@ -28,11 +30,15 @@ services:
       - redis
     networks:
       - hebo_network
+    command: python manage.py runserver 0.0.0.0:8000
 
   proxy:
     build:
       context: .
       dockerfile: docker/proxy.Dockerfile
+    volumes:
+      - ./proxy:/app
+    working_dir: /app
     env_file:
       - proxy/.env
     environment:
