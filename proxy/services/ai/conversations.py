@@ -82,8 +82,9 @@ def get_llm(
             if not llm_settings.api_key:
                 raise ValueError("OpenAI API key not found in agent settings")
                 
-            return ChatOpenAI(
-                model=model_name,
+            return init_llm(
+                client=None, 
+                model_name=model_name,
                 api_key=llm_settings.api_key,
                 base_url=llm_settings.api_base or None,
             )
