@@ -39,7 +39,7 @@ and provide more contextual responses:
 Past conversations:
 {history_summaries}
 
-Continue the conversation with the user using the same language and tone as the past conversations.
+Continue the conversation with the user using the same language and tone as the past conversations and follow the language direction above.
 """
 
     prompt += f"\nToday is {datetime.now().strftime('%B %d, %Y')}"

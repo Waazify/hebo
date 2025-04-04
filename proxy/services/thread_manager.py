@@ -116,7 +116,12 @@ class ThreadManager:
         llm_conversation = self._messages_to_llm_conversation(
             messages, agent_settings, session
         )
-        summary = execute_summary(agent_settings, llm_conversation, session)
+        llm_conversation: List[LangchainBaseMessage] = [
+            msg
+            for msg in llm_conversation
+            if isinstance(msg, (AIMessage, HumanMessage))
+        ]
+        summary = execute_summary(agent_settings, llm_conversation[:-1], session)
 
         return summary
 
@@ -788,6 +793,8 @@ class ThreadManager:
                                 text="Human colleague: ",
                             ),
                         )
+
+                # TODO: this doesn't look like it is working. To be checked.
                 elif message.message_type == "human":
                     if not added_first_human_message:
                         added_first_human_message = True

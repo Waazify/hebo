@@ -465,7 +465,7 @@ def execute_summary(
                         "Generate a detailed summary of the conversation. "
                         "Respond with the summary only. "
                         "No comments or other text. "
-                        "Remember to use the same language as the conversation. If the conversation is in English, keep it in English."
+                        "Remember to generate it in English and to add the primary language of the conversation at the end of the summary."
                     )
                 ),
             ],
