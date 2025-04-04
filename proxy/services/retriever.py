@@ -66,18 +66,6 @@ class Retriever:
         if agent_settings.condense_llm:
             self._validate_provider_credentials(agent_settings)
             
-            if agent_settings.condense_llm.provider.lower() == "openai":
-                self.condense_client = ChatOpenAI(
-                    model=agent_settings.condense_llm.name,
-                    api_key=agent_settings.condense_llm.api_key,
-                    base_url=agent_settings.condense_llm.api_base or None,
-                )
-            else:  # Default to Bedrock
-                self.condense_client = get_bedrock_client(
-                    agent_settings.condense_llm.aws_access_key_id,
-                    agent_settings.condense_llm.aws_secret_access_key,
-                    agent_settings.condense_llm.aws_region,
-                )
 
     async def embed_content(self, content: str) -> List[float]:
         """Embed content using the embeddings client.
@@ -216,9 +204,7 @@ class Retriever:
             RetrievalError: If query condensation fails
         """
         try:
-            return execute_condense(
-                self.condense_client, messages, session, agent_settings
-            )
+            return execute_condense(messages, session, agent_settings)
         except Exception as e:
             logger.error("Query condensation failed: %s", str(e))
             raise RetrievalError(f"Query condensation failed: {str(e)}")

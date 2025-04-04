@@ -12,7 +12,7 @@ from langchain_core.messages import (
 )
 from langchain_core.runnables import Runnable
 from langchain_mcp_adapters.tools import load_mcp_tools
-
+from langchain_openai import ChatOpenAI
 from mcp.client.session import ClientSession
 from mcp.client.sse import sse_client
 
@@ -345,7 +345,6 @@ def _format_conversation(
 
 # TODO: make this async
 def execute_condense(
-    client,
     conversation: List[BaseMessage],
     session: Session,
     # TODO: agent_settings is used just for the model name. Client depends on AgentSettings.
