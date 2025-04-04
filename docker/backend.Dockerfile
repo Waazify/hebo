@@ -52,4 +52,9 @@ ENV DJANGO_SETTINGS_MODULE="settings"
 
 WORKDIR /app
 
+# Add entrypoint script
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "core.wsgi:application"]
