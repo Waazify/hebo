@@ -2,7 +2,6 @@ import logging
 from typing import List, Optional, AsyncGenerator
 
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import (
     AIMessage,
     BaseMessage,
@@ -12,7 +11,6 @@ from langchain_core.messages import (
 )
 from langchain_core.runnables import Runnable
 from langchain_mcp_adapters.tools import load_mcp_tools
-from langchain_openai import ChatOpenAI
 from mcp.client.session import ClientSession
 from mcp.client.sse import sse_client
 
@@ -50,7 +48,7 @@ def _extract_root_exception(
 def get_llm(
     agent_settings: Optional[AgentSetting],
     model_name: Optional[str] = None,
-    llm_type: str = "core"  # can be "core", "condense", or "vision"
+    llm_type: str = "core",  # can be "core", "condense", or "vision"
 ) -> BaseChatModel:
     """Initialize the LLM based on provider settings and return the instance."""
     if not agent_settings:
@@ -69,21 +67,21 @@ def get_llm(
 
     if not model_name and llm_settings:
         model_name = llm_settings.name
-    
+
     if not model_name:
         raise ValueError("Model name not found")
 
     # Validate the model name
     if not validate_model_name(model_name):
         raise ValueError(f"Invalid model name: {model_name}")
-        
+
     if llm_settings:
         if llm_settings.provider == "openai":
             if not llm_settings.api_key:
                 raise ValueError("OpenAI API key not found in agent settings")
-                
+
             return init_llm(
-                client=None, 
+                client=None,
                 model_name=model_name,
                 api_key=llm_settings.api_key,
                 base_url=llm_settings.api_base or None,
@@ -96,7 +94,7 @@ def get_llm(
                 llm_settings.aws_region or "",
             )
             return init_llm(conversation_client, model_name)
-    
+
     raise ValueError("Invalid agent settings configuration")
 
 
@@ -270,6 +268,7 @@ async def execute_conversation(
     except* Exception as e:
         raise _extract_root_exception(e) from None
 
+
 # TODO: make this async
 def execute_vision(
     conversation: List[BaseMessage],
@@ -358,7 +357,9 @@ def execute_condense(
     # Use the main get_llm function with condense_llm settings
     llm = get_llm(
         agent_settings,
-        model_name=agent_settings.condense_llm.name if agent_settings.condense_llm else None
+        model_name=agent_settings.condense_llm.name
+        if agent_settings.condense_llm
+        else None,
     )
 
     messages = _format_conversation(conversation, session, agent_settings)

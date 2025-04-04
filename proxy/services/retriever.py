@@ -3,7 +3,6 @@ import json
 from typing import List
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-from langchain_openai import ChatOpenAI
 
 from db.vectorstore import VectorStore
 from schemas.ai import Session
@@ -12,7 +11,6 @@ from schemas.knowledge import ContentType
 
 # TODO: Add support for other embeddings providers
 # TODO: provide a similar interface for other embeddings and chat models
-from .ai.chat_models.bedrock import get_bedrock_client
 from .ai.conversations import execute_condense
 from .ai.embeddings.voyage import VoyageClient
 from .exceptions import EmbeddingError, RetrievalError
@@ -34,7 +32,7 @@ class Retriever:
             raise ValueError("No LLM configuration found in agent settings")
 
         provider = agent_settings.condense_llm.provider.lower()
-        
+
         if provider == "openai":
             if not agent_settings.condense_llm.api_key:
                 raise ValueError("OpenAI API key not found in agent settings")
@@ -55,17 +53,16 @@ class Retriever:
     ):
         self.vector_store = vector_store
         self.agent_settings = agent_settings
-        
+
         # Validate embeddings configuration
         if not agent_settings.embeddings or not agent_settings.embeddings.api_key:
             raise ValueError("Embeddings API key not found in agent settings")
-            
+
         self.embeddings_client = VoyageClient(agent_settings.embeddings.api_key)
-        
+
         # Validate and initialize the condense client based on provider
         if agent_settings.condense_llm:
             self._validate_provider_credentials(agent_settings)
-            
 
     async def embed_content(self, content: str) -> List[float]:
         """Embed content using the embeddings client.

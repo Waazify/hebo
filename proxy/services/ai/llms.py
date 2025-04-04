@@ -1,6 +1,7 @@
 import re
-from langchain_aws import ChatBedrockConverse 
-from langchain_openai import ChatOpenAI 
+from langchain_aws import ChatBedrockConverse
+from langchain_openai import ChatOpenAI
+
 # Define regex pattern for AWS Bedrock ARNs
 BEDROCK_ARN_PATTERN = re.compile(
     r"arn:aws:bedrock:[a-z0-9-]+:\d+:inference-profile/[a-zA-Z0-9.-]+:\d+"
@@ -14,6 +15,7 @@ PROVIDER_MAP = {
     "bedrock": ChatBedrockConverse,
     "openai": ChatOpenAI,
 }
+
 
 # Use a function to determine the provider based on the ARN
 def get_provider(model_name):
@@ -31,7 +33,7 @@ def init_llm(client, model_name, temperature=1, max_tokens=512, **kwargs):
         "client": client,
         "model": model_name,
         "temperature": temperature,
-        **kwargs
+        **kwargs,
     }
 
     # Only add max_tokens for non-Bedrock models
