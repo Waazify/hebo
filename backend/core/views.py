@@ -1,13 +1,15 @@
+import logging
+
+from allauth.account.views import SignupView
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
-from django.http import JsonResponse
 from django.db import connections
 from django.db.utils import OperationalError
-from django.conf import settings
-from django.views.decorators.http import require_GET
-from allauth.account.views import SignupView
+from django.http import JsonResponse
+from django.shortcuts import redirect
 from django.urls import reverse_lazy
-import logging
+from django.views.decorators.http import require_GET
+from hebo_organizations.models import OrganizationUser
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +17,14 @@ logger = logging.getLogger(__name__)
 @login_required
 @require_GET
 def home(request):
-    return render(request, "home.html")
+    if not request.user.hebo_organization_user.exists():
+        return redirect("organization_create")
+
+    user_organization = (
+        OrganizationUser.objects.filter(user=request.user).first().organization
+    )
+
+    return redirect("knowledge_list", organization_pk=user_organization.pk)
 
 
 def health_check(request):

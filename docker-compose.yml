@@ -18,14 +18,11 @@ services:
       dockerfile: docker/backend.Dockerfile
     volumes:
       - backend_static:/app/staticfiles
+      - ./backend:/app
+    working_dir: /app
     env_file:
       - backend/.env
     environment:
-      - POSTGRES_HOST=db
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=hebo
-      - POSTGRES_PASSWORD=hebo
-      - POSTGRES_DB=hebo
       - PROXY_SERVER_BASE_URL=http://localhost:80/api
       - PROXY_URL=http://proxy:8001
     depends_on:
@@ -33,19 +30,18 @@ services:
       - redis
     networks:
       - hebo_network
+    command: python manage.py runserver 0.0.0.0:8000
 
   proxy:
     build:
       context: .
       dockerfile: docker/proxy.Dockerfile
+    volumes:
+      - ./proxy:/app
+    working_dir: /app
     env_file:
       - proxy/.env
     environment:
-      - POSTGRES_HOST=db
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=hebo
-      - POSTGRES_PASSWORD=hebo
-      - POSTGRES_DB=hebo
       - ADDITIONAL_CORS_ORIGINS="https://api.hebo.ai,https://app.hebo.ai"
     depends_on:
       - db
