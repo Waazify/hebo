@@ -25,7 +25,7 @@ Scenarios are sets of instructions on how to handle specific real-world conversa
 Examples are conversation samples that should guide you in understanding how to better interact with users.
 Please analyze this context carefully and use it to inform your responses:
 
-Context:
+# Context:
 {context}
 
 """
@@ -36,7 +36,7 @@ Context:
 Below are dense summaries of these past conversations - use this information to maintain continuity
 and provide more contextual responses:
 
-Past conversations:
+# Past conversations:
 {history_summaries}
 
 Continue the conversation with the user using the same language and tone as the past conversations and follow the language direction above.
