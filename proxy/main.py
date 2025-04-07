@@ -12,15 +12,8 @@ from starlette.background import BackgroundTask
 from auth.middleware import APIKeyMiddleware
 from config import settings
 from db.database import wait_for_database_connection
-from services import HEBO
-from services.middleware import (
-    TaskTracker,
-    TaskTrackerMiddleware,
-    MaxBodySizeMiddleware,
-)
-from services.thread_manager import ThreadManager
-from services.vector_manager import VectorManager
 from schemas.knowledge import CreateVectorRequest, CreateVectorResponse
+from schemas.responses import Error, Response, ResponseRequest
 from schemas.server import HealthResponse
 from schemas.threads import (
     AddMessageRequest,
@@ -31,6 +24,15 @@ from schemas.threads import (
     RemoveMessageResponse,
     RunRequest,
 )
+from services import HEBO
+from services.middleware import (
+    MaxBodySizeMiddleware,
+    TaskTracker,
+    TaskTrackerMiddleware,
+)
+from services.response_manager import ResponseManager
+from services.thread_manager import ThreadManager
+from services.vector_manager import VectorManager
 
 from __version__ import __version__
 
@@ -255,3 +257,47 @@ async def run(request: RunRequest, req: Request, thread_id: int):
     except Exception as e:
         await cleanup_connection()
         raise e
+
+
+@app.post("/responses", response_model=Response)
+async def create_response(request: ResponseRequest, req: Request):
+    """Create a new response"""
+    organization_id = req.state.organization["id"]
+    logger.info("Creating response for organization %s", organization_id)
+
+    # Validate unsupported parameters
+    unsupported_params = {
+        "max_output_tokens": request.max_output_tokens is not None,
+        "temperature": request.temperature != 1.0,
+        "top_p": request.top_p != 1.0,
+        "n": request.n != 1,
+        "stop": request.stop is not None,
+        "presence_penalty": request.presence_penalty != 0.0,
+        "frequency_penalty": request.frequency_penalty != 0.0,
+        "logit_bias": request.logit_bias is not None,
+        "logprobs": request.logprobs is not None,
+        "tool_choice": request.tool_choice is not None,
+        "tools": request.tools is not None,
+        "parallel_tool_calls": request.parallel_tool_calls,
+        "truncation": request.truncation != "disabled",
+        "include": request.include is not None,
+        "reasoning": request.reasoning is not None,
+        "stream": request.stream,
+    }
+
+    for param, is_unsupported in unsupported_params.items():
+        if is_unsupported:
+            raise HTTPException(
+                status_code=400,
+                detail=Error(
+                    message=f"Unsupported parameter '{param}'. This API currently does not support setting the '{param}' parameter.",
+                    type="invalid_request_error",
+                    param=param,
+                    code="unsupported_parameter",
+                ),
+            )
+
+    # Create DB instance for this request
+    async with app.state.db_pool.acquire() as conn:
+        response_manager = ResponseManager(conn)
+        return await response_manager.create_response(request, organization_id)
