@@ -38,7 +38,6 @@ class ResponseManager:
         try:
             # Create or fetch thread
             if request.previous_response_id:
-                # TODO: Implement thread fetching by previous_response_id
                 thread_id = int(request.previous_response_id)
             else:
                 # Create new thread
