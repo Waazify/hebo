@@ -18,6 +18,7 @@ from schemas.server import HealthResponse
 from schemas.threads import (
     AddMessageRequest,
     AddMessageResponse,
+    CloseThreadRequest,
     CloseThreadResponse,
     CreateThreadRequest,
     CreateThreadResponse,
@@ -181,16 +182,20 @@ async def create_thread(request: CreateThreadRequest, req: Request):
 
 
 @app.post("/threads/{thread_id}/close", response_model=CloseThreadResponse)
-async def close_thread(thread_id: int, req: Request):
+async def close_thread(request: CloseThreadRequest, req: Request, thread_id: int):
     """Close a thread"""
     organization_id = req.state.organization["id"]
     logger.info("Closing thread %s for organization %s", thread_id, organization_id)
+
+    agent_version = request.agent_version
 
     async with app.state.db_pool.acquire() as conn:
         thread_manager = ThreadManager(conn)
 
         # Close thread
-        thread, summary = await thread_manager.close_thread(thread_id, organization_id)
+        thread, summary = await thread_manager.close_thread(
+            thread_id, organization_id, agent_version
+        )
 
         if not thread or not thread.id:
             raise HTTPException(status_code=404, detail="Thread not found")

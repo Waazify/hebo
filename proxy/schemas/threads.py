@@ -119,6 +119,10 @@ class CreateThreadResponse(BaseModel):
     is_open: bool
 
 
+class CloseThreadRequest(BaseModel):
+    agent_version: Optional[str] = None
+
+
 class CloseThreadResponse(BaseModel):
     thread_id: int
     is_open: bool

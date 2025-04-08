@@ -71,7 +71,7 @@ class ThreadManager:
         return thread
 
     async def _generate_summary(
-        self, thread: Thread, organization_id: str
+        self, thread: Thread, organization_id: str, agent_version: str | None = None
     ) -> str | None:
         if not thread.id:
             return None
@@ -81,9 +81,10 @@ class ThreadManager:
         if not messages:
             return None
 
-        agent_version = await self.db.get_agent_version_from_run(
-            thread.id, organization_id
-        )
+        if not agent_version:
+            agent_version = await self.db.get_agent_version_from_run(
+                thread.id, organization_id
+            )
 
         if not agent_version:
             return None
@@ -126,7 +127,7 @@ class ThreadManager:
         return summary
 
     async def close_thread(
-        self, thread_id: int, organization_id: str
+        self, thread_id: int, organization_id: str, agent_version: str | None = None
     ) -> tuple[Thread, str | None]:
         await self.db.close_thread(thread_id, organization_id)
         thread = await self.db.get_thread(thread_id, organization_id)
@@ -139,7 +140,9 @@ class ThreadManager:
 
         summary = None
         try:
-            summary = await self._generate_summary(thread, organization_id)
+            summary = await self._generate_summary(
+                thread, organization_id, agent_version
+            )
 
             if not summary:
                 logger.warning("Thread %s has no summary", thread_id)
