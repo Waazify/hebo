@@ -1,9 +1,13 @@
 import base64
 import httpx
 import io
+import logging
 from PIL import Image
 
 from schemas.threads import Message, MessageContentType
+
+
+logger = logging.getLogger(__name__)
 
 
 async def _encode_image_from_url(url: str) -> str:
@@ -49,26 +53,19 @@ def _compress_image_data(image_data: bytes, max_size_mb: float = 3.0) -> bytes:
     quality = 95
     output = io.BytesIO()
 
-    # Compress with decreasing quality until size is below limit
-    while quality > 10:
-        output.seek(0)
-        output.truncate(0)
+    # Reduce image size if it's too big
+    if img.width > 6400 or img.height > 6400:
+        logger.info("Image too big: reducing image size")
+        img.thumbnail((6400, 6400))
         img.save(output, format="JPEG", quality=quality, optimize=True)
-        if output.tell() <= max_size_bytes:
-            break
-        quality -= 5
 
-    # If we couldn't get it small enough, resize the image
-    if output.tell() > max_size_bytes:
-        # Calculate new dimensions to maintain aspect ratio
-        ratio = (max_size_bytes / output.tell()) ** 0.5  # Square root for 2D scaling
-        new_width = int(img.width * ratio)
-        new_height = int(img.height * ratio)
-        img = img.resize((new_width, new_height), Image.Resampling.BICUBIC)
-        # Try again with the resized image
+    # Compress with decreasing quality until size is below limit
+    while output.tell() > max_size_bytes and quality > 10:
+        logger.info(f"Image too big: reducing quality to {quality}")
         output.seek(0)
         output.truncate(0)
         img.save(output, format="JPEG", quality=quality, optimize=True)
+        quality -= 5
 
     return output.getvalue()
 
@@ -126,15 +123,15 @@ async def get_content_from_human_message(message: Message) -> list:
     for image in images:
         if image:
             # Ensure image is under size limit
-            # compressed_image = _ensure_image_size_limit(image)
-            content.append(_image_data_body(image))
+            compressed_image = _ensure_image_size_limit(image)
+            content.append(_image_data_body(compressed_image))
 
     for url in urls:
         if url and isinstance(url, str):
             encoded_image = await _encode_image_from_url(url)
             # Ensure downloaded image is under size limit
-            # compressed_image = _ensure_image_size_limit(encoded_image)
-            content.append(_image_url_body(encoded_image))
+            compressed_image = _ensure_image_size_limit(encoded_image)
+            content.append(_image_url_body(compressed_image))
 
     for text in texts:
         if text:
