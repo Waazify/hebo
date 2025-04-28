@@ -781,6 +781,12 @@ class ThreadManager:
                 if previous_message:
                     prev_content = previous_message.content
                     curr_content = message.content
+                    # Add a space between text content if both messages have text content
+                    if (prev_content and curr_content and 
+                        prev_content[-1].type == MessageContentType.TEXT and 
+                        curr_content[0].type == MessageContentType.TEXT):
+                        # Add a space to the beginning of the current message's text
+                        curr_content[0].text = " " + curr_content[0].text
                     message.content = prev_content + curr_content
                 elif message.message_type == "human_agent":
                     curr_content = message.content
