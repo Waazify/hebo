@@ -782,10 +782,13 @@ class ThreadManager:
                     prev_content = previous_message.content
                     curr_content = message.content
                     # Add a space between text content if both messages have text content
-                    if (prev_content and curr_content and
-                        prev_content[-1].type == MessageContentType.TEXT and
-                        curr_content[0].type == MessageContentType.TEXT and
-                        curr_content[0].text is not None):
+                    if (
+                        prev_content
+                        and curr_content
+                        and prev_content[-1].type == MessageContentType.TEXT
+                        and curr_content[0].type == MessageContentType.TEXT
+                        and curr_content[0].text is not None
+                    ):
                         # Add a space to the beginning of the current message's text
                         curr_content[0].text = " " + curr_content[0].text
                     message.content = prev_content + curr_content
